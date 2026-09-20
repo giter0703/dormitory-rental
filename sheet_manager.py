@@ -20,6 +20,24 @@ def get_db_client():
     rentals_sheet = sh.worksheet("Rentals")
     return items_sheet, rentals_sheet
 
+# ----------------- 공지사항(Notice) -----------------
+def get_notice():
+    """생활관 공지사항 텍스트 실시간 조회 (Notice 시트 A2 셀)"""
+    try:
+        # get_db_client()와 동일한 인증 클라이언트로 스프레드시트 접근
+        if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
+            creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
+            gc = gspread.service_account_from_dict(creds_dict)
+        else:
+            gc = gspread.service_account(filename=JSON_KEY_FILE)
+            
+        sh = gc.open_by_key(SPREADSHEET_KEY)
+        notice_sheet = sh.worksheet("Notice")
+        notice_val = notice_sheet.acell("A2").value
+        return str(notice_val).strip() if notice_val else ""
+    except Exception:
+        return "물품 대여 후 이용 시간을 준수해 주시고, 파손 및 분실에 유의해 주세요."
+
 # ----------------- 물품(Items) -----------------
 def get_all_items():
     items_sheet, _ = get_db_client()
@@ -149,14 +167,3 @@ def complete_return(rental_id, item_name):
 def get_rentals_by_student(student_id):
     all_rentals = get_all_rentals()
     return [r for r in all_rentals if str(r.get("student_id")).strip() == str(student_id).strip()]
-
-def get_notice():
-    """생활관 공지사항 텍스트 조회 (Notice 시트 A2 셀)"""
-    try:
-        gc = gspread.service_account(filename=JSON_KEY_FILE)
-        sh = gc.open_by_key(SPREADSHEET_KEY)
-        notice_sheet = sh.worksheet("Notice")
-        notice_val = notice_sheet.acell("A2").value
-        return notice_val if notice_val else ""
-    except Exception:
-        return "물품 대여 후 이용 시간을 준수해 주시고, 파손 및 분실에 유의해 주세요."
