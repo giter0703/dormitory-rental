@@ -1,12 +1,21 @@
+import streamlit as st
 import gspread
 from datetime import datetime
 
-# 구글 스프레드시트 키값 입력
+# 구글 스프레드시트 키값 (로컬 및 클라우드 공용)
 SPREADSHEET_KEY = "1kC6zFlFXRdgPYP5_MX_L8N9gDIokx2BHrCqTqn7qrGg"
 JSON_KEY_FILE = "service_account.json"
 
 def get_db_client():
-    gc = gspread.service_account(filename=JSON_KEY_FILE)
+    # 클라우드 배포 환경(Secrets) 우선 확인, 없을 경우 로컬 json 파일 사용
+    if "gcp_service_account" in st.secrets:
+        creds = dict(st.secrets["gcp_service_account"])
+        # 개행 문자 복구 처리
+        creds["private_key"] = creds["private_key"].replace("\\n", "\n")
+        gc = gspread.service_account_from_dict(creds)
+    else:
+        gc = gspread.service_account(filename=JSON_KEY_FILE)
+        
     sh = gc.open_by_key(SPREADSHEET_KEY)
     items_sheet = sh.worksheet("Items")
     rentals_sheet = sh.worksheet("Rentals")
