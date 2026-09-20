@@ -30,17 +30,16 @@ def update_item_available_qty(item_name, delta):
 
 # ----------------- 대여(Rentals) -----------------
 def get_all_rentals():
-    """모든 대여 내역을 시트 열 순서(G열: desired_date) 기반으로 안전하게 파싱"""
+    """모든 대여 내역을 시트 열 순서 기반으로 안전하게 파싱 (생활관명 포함)"""
     _, rentals_sheet = get_db_client()
     rows = rentals_sheet.get_all_values()
     if not rows or len(rows) <= 1:
         return []
     
-    # 2행부터 실제 데이터 파싱
     records = []
     for r in rows[1:]:
-        # 데이터가 부족한 행 방어 (최소 11열 확보)
-        while len(r) < 11:
+        # 데이터가 부족한 행 방어 (최소 12열 확보)
+        while len(r) < 12:
             r.append("")
             
         record = {
@@ -50,24 +49,25 @@ def get_all_rentals():
             "room_no": r[3].strip(),
             "item_name": r[4].strip(),
             "req_time": r[5].strip(),
-            "desired_date": r[6].strip(),      # G열 (대여 희망 날짜 및 시간)
-            "confirmed_date": r[7].strip(),    # H열 (확정 일시)
-            "status": r[8].strip(),            # I열 (대여 상태)
-            "admin_memo": r[9].strip(),        # J열 (관리자 메모)
-            "return_time": r[10].strip()       # K열 (반납 시간)
+            "desired_date": r[6].strip(),      # G열: 대여 희망 일시
+            "confirmed_date": r[7].strip(),    # H열: 확정 일시
+            "status": r[8].strip(),            # I열: 대여 상태
+            "admin_memo": r[9].strip(),        # J열: 관리자 메모
+            "return_time": r[10].strip(),      # K열: 반납 시간
+            "building_name": r[11].strip() if len(r) > 11 else ""  # L열: 생활관명
         }
         if record["rental_id"]:
             records.append(record)
             
     return records
 
-def add_rental_request(student_id, student_name, room_no, item_name, desired_date):
-    """사생의 신규 대여 신청 등록"""
+def add_rental_request(student_id, student_name, building_name, room_no, item_name, desired_date):
+    """관생의 신규 대여 신청 등록 (생활관명 추가)"""
     _, rentals_sheet = get_db_client()
     rental_id = f"R{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     req_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # A~K열 (총 11개) 순서대로 배치
+    # A~L열 (총 12개) 순서대로 배치
     new_row = [
         str(rental_id),          # A: rental_id
         str(student_id),         # B: student_id
@@ -79,7 +79,8 @@ def add_rental_request(student_id, student_name, room_no, item_name, desired_dat
         "",                      # H: confirmed_date
         "승인대기",                # I: status
         "",                      # J: admin_memo
-        ""                       # K: return_time
+        "",                      # K: return_time
+        str(building_name)       # L: building_name (생활관명)
     ]
     rentals_sheet.append_row(new_row, value_input_option="USER_ENTERED")
     return rental_id
@@ -142,7 +143,7 @@ def get_rentals_by_student(student_id):
     return [r for r in all_rentals if str(r.get("student_id")).strip() == str(student_id).strip()]
 
 def get_notice():
-    """사감실 공지사항 텍스트 조회 (Notice 시트 A2 셀)"""
+    """생활관 공지사항 텍스트 조회 (Notice 시트 A2 셀)"""
     try:
         gc = gspread.service_account(filename=JSON_KEY_FILE)
         sh = gc.open_by_key(SPREADSHEET_KEY)

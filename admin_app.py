@@ -3,25 +3,25 @@ import streamlit_authenticator as stauth
 import sheet_manager as sm
 
 st.set_page_config(
-    page_title="자치회 물품 대여 관리자 포털",
+    page_title="생활관 자치회 물품 대여 관리자 포털",
     page_icon="🔐",
     layout="wide"
 )
 
 # 1. 관리자 인증 설정
 hasher = stauth.Hasher()
-hashed_pw_admin1 = hasher.hash("admin1234") #아이디
+hashed_pw_admin1 = hasher.hash("admin1234")
 hashed_pw_admin2 = hasher.hash("master5678")
 
 credentials = {
     "usernames": {
         "admin1": {
-            "name": "자치회원1",
+            "name": "생활관 자치회원1",
             "password": hashed_pw_admin1,
             "email": "admin1@dormitory.com"
         },
         "admin2": {
-            "name": "자치회원2",
+            "name": "생활관 자치회원2",
             "password": hashed_pw_admin2,
             "email": "master@dormitory.com"
         }
@@ -41,7 +41,7 @@ if st.session_state.get("authentication_status") is False:
     st.error("❌ 아이디 또는 비밀번호가 올바르지 않습니다.")
     st.stop()
 elif st.session_state.get("authentication_status") is None:
-    st.warning("🔒 자치회 물품 대여 관리자 전용 포털입니다. 로그인 정보를 입력해주세요.")
+    st.warning("🔒 생활관 자치회 관리자 전용 포털입니다. 로그인 정보를 입력해주세요.")
     st.stop()
 
 # 2. 관리자 메인 업무 화면
@@ -49,7 +49,7 @@ with st.sidebar:
     st.write(f"👤 접속 관리자: **{st.session_state.get('name')}**님")
     authenticator.logout(button_name="로그아웃", location="sidebar")
 
-st.title("🏢 자치회 물품 대여 관리 센터")
+st.title("🏢 생활관 자치회 물품 대여 관리 센터")
 st.caption("실시간 승인·반려 및 물품 반납 관리 대시보드")
 st.markdown("---")
 
@@ -70,10 +70,13 @@ with tab1:
             item_name = r.get("item_name", "물품")
             student_name = r.get("student_name", "미상")
             student_id = r.get("student_id", "-")
+            building_name = r.get("building_name", "")
             room_no = r.get("room_no", "-")
             req_time = r.get("req_time", "-")
             
-            # 사생이 입력한 대여 희망 날짜 + 시간
+            location_info = f"{building_name} {room_no}호" if building_name else f"{room_no}호"
+            
+            # 관생이 입력한 대여 희망 날짜 + 시간
             desired_date = r.get("desired_date", "").strip()
             display_desired = desired_date if desired_date else "-"
 
@@ -82,12 +85,12 @@ with tab1:
                 with col_info:
                     st.markdown(f"**#{idx+1} {item_name}**")
                     st.write(f"- 신청자: **{student_name}** ({student_id})")
-                    st.write(f"- 호실: {room_no}호")
+                    st.write(f"- 소속: **{location_info}**")
                     st.write(f"- 신청접수시각: {req_time}")
-                    st.write(f"- 사생 희망일시: `{display_desired}`")
+                    st.write(f"- 관생 희망일시: `{display_desired}`")
                 
                 with col_action:
-                    # 관리자가 일시를 수정할 수 있는 입력란 (사생 입력값이 기본으로 세팅)
+                    # 관리자가 일시를 수정할 수 있는 입력란 (관생 입력값이 기본 세팅)
                     edit_desired = st.text_input(
                         "대여 희망일시 (관리자 수정 가능)",
                         value=display_desired,
@@ -95,11 +98,11 @@ with tab1:
                     )
                     c_date = st.text_input(
                         "확정 대여일시 안내 문구", 
-                        value=f"{edit_desired} 자치회실 방문 수령", 
+                        value=f"{edit_desired} 생활관 자치회실 방문 수령", 
                         key=f"c_{rental_id}"
                     )
                     c_memo = st.text_input(
-                        "사생 안내 메모 / 반려 사유", 
+                        "관생 안내 메모 / 반려 사유", 
                         placeholder="예: 시간 준수 요망", 
                         key=f"m_{rental_id}"
                     )
@@ -125,7 +128,7 @@ with tab1:
                             with st.spinner("반려 처리 중..."):
                                 sm.reject_rental(
                                     rental_id=rental_id,
-                                    reject_reason=c_memo if c_memo else "자치회실 사정으로 반려"
+                                    reject_reason=c_memo if c_memo else "생활관 자치회 사정으로 반려"
                                 )
                             st.toast("신청이 반려되었습니다.", icon="❌")
                             st.rerun()
@@ -163,12 +166,14 @@ with tab2:
             rental_id = r.get("rental_id", "")
             item_name = r.get("item_name", "물품")
             student_name = r.get("student_name", "미상")
+            building_name = r.get("building_name", "")
             room_no = r.get("room_no", "-")
+            location_info = f"{building_name} {room_no}호" if building_name else f"{room_no}호"
             confirmed_date = r.get("confirmed_date", "-")
 
             with st.container(border=True):
                 c1, c2, c3 = st.columns([2, 2, 1])
-                c1.write(f"**{item_name}** | {student_name} ({room_no}호)")
+                c1.write(f"**{item_name}** | {student_name} ({location_info})")
                 c2.write(f"대여 일시: {confirmed_date}")
                 if c3.button("반납 완료", key=f"ret_{rental_id}", use_container_width=True):
                     with st.spinner("반납 처리 중..."):
