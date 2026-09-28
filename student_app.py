@@ -87,7 +87,7 @@ with tab_apply:
                 s_room = st.text_input("호실 번호", placeholder="예: 402호")
                 s_id = st.text_input("학번", placeholder="예: 20241001", max_chars=10)
                 s_name = st.text_input("이름", placeholder="예: 홍길동")
-                s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@scnu.ac.kr")
+                s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@s.scnu.ac.kr")
             with col2:
                 s_item = st.selectbox("신청 물품 선택", available_names)
                 r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
@@ -103,7 +103,7 @@ with tab_apply:
             except Exception:
                 pass
             
-            agreement = st.radio("위 서약 내용에 동의하십니까?", ["선택해주세요", "동의", "비동의"], horizontal=True)
+            agreement = st.radio("위 서약 내용에 동의하십니까?", ["동의", "비동의"], horizontal=True)
 
             submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
 
