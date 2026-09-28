@@ -94,13 +94,13 @@ with tab_apply:
                 r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
                 exp_ret_date = st.date_input("반납 예정 일자", min_value=r_date, value=r_date)
 
-            st.markdown
+            st.markdown("---")
             st.subheader("서약서 동의")
             try:
                 pledge_text = sm.get_pledge()
                 if pledge_text:
                     formatted_pledge = pledge_text.replace("\n", "<br>")
-                    # background-color 값을 원하시는 색상(예: #f9f9f9, #fff9c4 등)으로 변경하실 수 있습니다.
+                    # 배경색이 적용된 커스텀 서약서 영역 출력
                     st.markdown(
                         f"""
                         <div style="
@@ -123,7 +123,8 @@ with tab_apply:
             except Exception:
                 pass
             
-            agreement = st.radio("위 서약 내용에 동의하십니까?", ["동의", "비동의"], horizontal=True)
+            # '선택해주세요' 항목을 완전히 제거하고 '동의'가 기본으로 선택되도록 구성
+            agreement = st.radio("위 서약 내용에 동의하십니까?", ["동의", "비동의"], index=0, horizontal=True)
 
             submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
 
