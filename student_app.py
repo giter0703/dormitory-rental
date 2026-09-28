@@ -94,7 +94,15 @@ with tab_apply:
                 r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
                 exp_ret_date = st.date_input("반납 예정 일자", min_value=r_date, value=r_date)
 
-            st.markdown("---")
+            st.markdown(
+            f"""
+            <div style="background-color: #f0f7ff; border-left: 6px solid #1e88e5; padding: 16px 20px; border-radius: 6px; margin-top: 10px; margin-bottom: 20px; color: #0d47a1; font-size: {NOTICE_FONT_SIZE}; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                <div style="font-weight: bold; font-size: calc({NOTICE_FONT_SIZE} + 2px); margin-bottom: 8px;">📢 [확인해주세요!]</div>
+                {formatted_notice}
+            </div>
+            """,
+            unsafe_allow_html=True
+            )
             st.subheader("서약서 동의")
             try:
                 pledge_text = sm.get_pledge()
