@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime, date
 import sheet_manager as sm
 
+# 페이지 설정
 st.set_page_config(
     page_title="생활관 자치회 물품 대여 신청 포털",
     page_icon="📦",
@@ -9,6 +10,7 @@ st.set_page_config(
 )
 
 NOTICE_FONT_SIZE = "16px"
+BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
 
 st.title("📦 생활관 자치회 물품 대여 신청")
 st.caption("관생 전용 대여 신청 및 승인 결과 확인 포털")
@@ -34,9 +36,9 @@ st.markdown("---")
 
 tab_apply, tab_query = st.tabs(["📋 대여 신청하기", "🔍 내 신청 결과 조회"])
 
-BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-
+# ==========================================
 # [탭 1: 대여 신청]
+# ==========================================
 with tab_apply:
     st.subheader("대여 가능 물품 현황")
     
@@ -47,14 +49,15 @@ with tab_apply:
         st.error("⚠️ 서버와 통신할 수 없습니다. 시트 KEY 설정 및 네트워크 상태를 확인해주세요.")
 
     if items:
-        # 5칸 단위로 줄바꿈하여 카드 렌더링 (가시성 향상)
+        # 5개 단위로 카드 배치 (가시성 향상)
         for i in range(0, len(items), 5):
             cols = st.columns(5)
             for j, item in enumerate(items[i:i+5]):
                 clean_item = {str(k).strip(): v for k, v in item.items()}
                 with cols[j]:
                     name = clean_item.get("item_name", "물품")
-                    avail = int(clean_item.get("available_qty", 0)) if str(clean_item.get("available_qty", 0)).isdigit() else 0
+                    avail_raw = clean_item.get("available_qty", 0)
+                    avail = int(avail_raw) if str(avail_raw).isdigit() else 0
                     total = clean_item.get("total_qty", "-")
                     loc = clean_item.get("location", "자치회실")
 
@@ -69,12 +72,15 @@ with tab_apply:
     st.markdown("---")
     st.subheader("신청서 작성")
 
-    available_names = [it.get("item_name", "") for it in items if str(it.get("available_qty", 0)).isdigit() and int(it.get("available_qty", 0)) > 0]
+    available_names = [
+        it.get("item_name", "") for it in items 
+        if str(it.get("available_qty", 0)).isdigit() and int(it.get("available_qty", 0)) > 0
+    ]
 
     if not available_names:
         st.error("현재 대여 가능한 물품이 없습니다.")
     else:
-        with st.form("apply_form", clear_on_submit=False):
+        with st.form("apply_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
                 s_building = st.selectbox("생활관명 선택", BUILDING_OPTIONS)
@@ -104,7 +110,7 @@ with tab_apply:
             if submit_btn:
                 if agreement != "동의":
                     st.error("⚠️ 서약 내용에 동의해야 대여 신청이 가능합니다.")
-                elif not (s_id.strip() and s_name.strip() and s_room.strip() and s_email.strip()):
+                elif not all([s_id.strip(), s_name.strip(), s_room.strip(), s_email.strip()]):
                     st.warning("⚠️ 학번, 이름, 호실, 이메일 정보를 모두 입력해주세요.")
                 else:
                     desired_str = f"{r_date.strftime('%Y-%m-%d')} {r_time}"
@@ -127,7 +133,9 @@ with tab_apply:
                     except Exception as err:
                         st.error(f"신청서 저장 중 오류가 발생했습니다: {err}")
 
+# ==========================================
 # [탭 2: 결과 조회]
+# ==========================================
 with tab_query:
     st.subheader("신청 상태 조회")
     col_input, col_btn = st.columns([3, 1])
