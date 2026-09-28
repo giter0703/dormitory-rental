@@ -1,42 +1,60 @@
 import streamlit as st
 import gspread
 import json
+import os
 from datetime import datetime
 
 SPREADSHEET_KEY = "1kC6zFlFXRdgPYP5_MX_L8N9gDIokx2BHrCqTqn7qrGg"
 JSON_KEY_FILE = "service_account.json"
 
-def get_db_client():
-    # 1. Streamlit Secrets에 JSON 통문자열이 있을 경우 (배포 환경)
-    if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
-        creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
-        gc = gspread.service_account_from_dict(creds_dict)
-    # 2. 로컬 컴퓨터 개발 환경
-    else:
+def get_sh():
+    try:
+        if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
+            creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
+            gc = gspread.service_account_from_dict(creds_dict)
+            return gc.open_by_key(SPREADSHEET_KEY)
+        elif "gcp_service_account" in st.secrets:
+            creds = dict(st.secrets["gcp_service_account"])
+            pkey = creds["private_key"]
+            if "\\n" in pkey:
+                pkey = pkey.replace("\\n", "\n")
+            creds["private_key"] = pkey.strip()
+            gc = gspread.service_account_from_dict(creds)
+            return gc.open_by_key(SPREADSHEET_KEY)
+    except Exception:
+        pass
+
+    if os.path.exists(JSON_KEY_FILE):
         gc = gspread.service_account(filename=JSON_KEY_FILE)
+        return gc.open_by_key(SPREADSHEET_KEY)
         
-    sh = gc.open_by_key(SPREADSHEET_KEY)
+    raise FileNotFoundError("인증 정보를 찾을 수 없습니다.")
+
+def get_db_client():
+    sh = get_sh()
     items_sheet = sh.worksheet("Items")
     rentals_sheet = sh.worksheet("Rentals")
     return items_sheet, rentals_sheet
 
-# ----------------- 공지사항(Notice) -----------------
+# ----------------- 공지사항 & 서약(Notice) -----------------
 def get_notice():
-    """생활관 공지사항 텍스트 실시간 조회 (Notice 시트 A2 셀)"""
     try:
-        # get_db_client()와 동일한 인증 클라이언트로 스프레드시트 접근
-        if "GCP_SERVICE_ACCOUNT_JSON" in st.secrets:
-            creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT_JSON"])
-            gc = gspread.service_account_from_dict(creds_dict)
-        else:
-            gc = gspread.service_account(filename=JSON_KEY_FILE)
-            
-        sh = gc.open_by_key(SPREADSHEET_KEY)
+        sh = get_sh()
         notice_sheet = sh.worksheet("Notice")
         notice_val = notice_sheet.acell("A2").value
         return str(notice_val).strip() if notice_val else ""
     except Exception:
         return "물품 대여 후 이용 시간을 준수해 주시고, 파손 및 분실에 유의해 주세요."
+
+def get_pledge():
+    """관리자가 작성한 서약 내용 조회 (Notice 시트 B2 셀)"""
+    try:
+        sh = get_sh()
+        notice_sheet = sh.worksheet("Notice")
+        pledge_val = notice_sheet.acell("B2").value
+        return str(pledge_val).strip() if pledge_val else ""
+    except Exception:
+        return "본인은 생활관 물품 대여 규정을 숙지하였으며, 물품 훼손 및 분실 시 전적으로 변상할 것을 서약합니다."
 
 # ----------------- 물품(Items) -----------------
 def get_all_items():
@@ -50,13 +68,12 @@ def update_item_available_qty(item_name, delta):
         clean_item = {str(k).strip(): v for k, v in item.items()}
         if clean_item.get("item_name") == item_name:
             new_qty = max(0, int(clean_item.get("available_qty", 0)) + delta)
-            items_sheet.update_cell(idx, 4, new_qty)  # D열: available_qty
+            items_sheet.update_cell(idx, 4, new_qty)
             return True
     return False
 
 # ----------------- 대여(Rentals) -----------------
 def get_all_rentals():
-    """모든 대여 내역을 시트 열 순서 기반으로 안전하게 파싱 (생활관명 포함)"""
     _, rentals_sheet = get_db_client()
     rows = rentals_sheet.get_all_values()
     if not rows or len(rows) <= 1:
@@ -64,8 +81,8 @@ def get_all_rentals():
     
     records = []
     for r in rows[1:]:
-        # 데이터가 부족한 행 방어 (최소 12열 확보)
-        while len(r) < 12:
+        # 데이터가 부족한 행 방어 (최소 15열 확보)
+        while len(r) < 15:
             r.append("")
             
         record = {
@@ -75,38 +92,43 @@ def get_all_rentals():
             "room_no": r[3].strip(),
             "item_name": r[4].strip(),
             "req_time": r[5].strip(),
-            "desired_date": r[6].strip(),      # G열: 대여 희망 일시
-            "confirmed_date": r[7].strip(),    # H열: 확정 일시
-            "status": r[8].strip(),            # I열: 대여 상태
-            "admin_memo": r[9].strip(),        # J열: 관리자 메모
-            "return_time": r[10].strip(),      # K열: 반납 시간
-            "building_name": r[11].strip() if len(r) > 11 else ""  # L열: 생활관명
+            "desired_date": r[6].strip(),      # G: 대여 희망 일시
+            "confirmed_date": r[7].strip(),    # H: 확정 일시
+            "status": r[8].strip(),            # I: 대여 상태
+            "admin_memo": r[9].strip(),        # J: 관리자 메모
+            "return_time": r[10].strip(),      # K: 반납 시간
+            "building_name": r[11].strip(),    # L: 생활관명
+            "expected_return": r[12].strip(),  # M: 반납 예정 일자
+            "agreement": r[13].strip(),        # N: 서약 동의
+            "email": r[14].strip()             # O: 이메일
         }
         if record["rental_id"]:
             records.append(record)
             
     return records
 
-def add_rental_request(student_id, student_name, building_name, room_no, item_name, desired_date):
-    """관생의 신규 대여 신청 등록 (생활관명 추가)"""
+def add_rental_request(student_id, student_name, building_name, room_no, item_name, desired_date, expected_return, agreement, email):
     _, rentals_sheet = get_db_client()
     rental_id = f"R{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     req_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # A~L열 (총 12개) 순서대로 배치
+    # A~O열 (총 15개) 순서대로 배치
     new_row = [
-        str(rental_id),          # A: rental_id
-        str(student_id),         # B: student_id
-        str(student_name),       # C: student_name
-        str(room_no),            # D: room_no
-        str(item_name),          # E: item_name
-        str(req_time),           # F: req_time
-        str(desired_date),       # G: desired_date (희망일시)
+        str(rental_id),          # A
+        str(student_id),         # B
+        str(student_name),       # C
+        str(room_no),            # D
+        str(item_name),          # E
+        str(req_time),           # F
+        str(desired_date),       # G
         "",                      # H: confirmed_date
         "승인대기",                # I: status
         "",                      # J: admin_memo
         "",                      # K: return_time
-        str(building_name)       # L: building_name (생활관명)
+        str(building_name),      # L
+        str(expected_return),    # M
+        str(agreement),          # N
+        str(email)               # O
     ]
     rentals_sheet.append_row(new_row, value_input_option="USER_ENTERED")
     return rental_id
@@ -119,12 +141,10 @@ def approve_rental(rental_id, item_name, confirmed_date, admin_memo="", updated_
         clean_r = {str(k).strip(): v for k, v in r.items()}
         if str(clean_r.get("rental_id")) == str(rental_id):
             if updated_desired_date:
-                rentals_sheet.update_cell(idx, 7, str(updated_desired_date))  # G열: desired_date
-            rentals_sheet.update_cell(idx, 8, str(confirmed_date))           # H열: confirmed_date
-            rentals_sheet.update_cell(idx, 9, "승인완료")                      # I열: status
-            rentals_sheet.update_cell(idx, 10, str(admin_memo))              # J열: admin_memo
-            
-            # 재고 차감 (-1)
+                rentals_sheet.update_cell(idx, 7, str(updated_desired_date))
+            rentals_sheet.update_cell(idx, 8, str(confirmed_date))
+            rentals_sheet.update_cell(idx, 9, "승인완료")
+            rentals_sheet.update_cell(idx, 10, str(admin_memo))
             update_item_available_qty(item_name, -1)
             return True
     return False
@@ -135,8 +155,8 @@ def reject_rental(rental_id, reject_reason):
     for idx, r in enumerate(records, start=2):
         clean_r = {str(k).strip(): v for k, v in r.items()}
         if str(clean_r.get("rental_id")) == str(rental_id):
-            rentals_sheet.update_cell(idx, 9, "반려")                          # I열: status
-            rentals_sheet.update_cell(idx, 10, str(reject_reason))           # J열: admin_memo
+            rentals_sheet.update_cell(idx, 9, "반려")
+            rentals_sheet.update_cell(idx, 10, str(reject_reason))
             return True
     return False
 
@@ -146,7 +166,7 @@ def start_rental(rental_id):
     for idx, r in enumerate(records, start=2):
         clean_r = {str(k).strip(): v for k, v in r.items()}
         if str(clean_r.get("rental_id")) == str(rental_id):
-            rentals_sheet.update_cell(idx, 9, "대여중")                        # I열: status
+            rentals_sheet.update_cell(idx, 9, "대여중")
             return True
     return False
 
@@ -157,9 +177,8 @@ def complete_return(rental_id, item_name):
     for idx, r in enumerate(records, start=2):
         clean_r = {str(k).strip(): v for k, v in r.items()}
         if str(clean_r.get("rental_id")) == str(rental_id):
-            rentals_sheet.update_cell(idx, 9, "반납완료")                      # I열: status
-            rentals_sheet.update_cell(idx, 11, return_time)                  # K열: return_time
-            # 재고 복구 (+1)
+            rentals_sheet.update_cell(idx, 9, "반납완료")
+            rentals_sheet.update_cell(idx, 11, return_time)
             update_item_available_qty(item_name, +1)
             return True
     return False
