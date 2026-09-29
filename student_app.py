@@ -59,7 +59,7 @@ with tab_apply:
                     avail_raw = clean_item.get("available_qty", 0)
                     avail = int(avail_raw) if str(avail_raw).isdigit() else 0
                     total = clean_item.get("total_qty", "-")
-                    loc = clean_item.get("location", "자치회실")
+                    loc = clean_item.get("location", " ")
 
                     with st.container(border=True):
                         st.markdown(f"**{name}**")
