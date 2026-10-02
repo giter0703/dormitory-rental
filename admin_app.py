@@ -2,10 +2,13 @@ import os
 import streamlit as st
 import streamlit_authenticator as stauth
 import sheet_manager as sm
-from dotenv import load_dotenv
 
-# 로컬 .env 환경변수 로드
-load_dotenv()
+# 로컬 환경용 dotenv 로드 (클라우드 환경에서 python-dotenv가 없어도 ModuleNotFoundError 방지)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 st.set_page_config(
     page_title="생활관 자치회 물품 대여 관리자 포털",
@@ -26,7 +29,7 @@ def get_env_val(key, default=""):
         # secrets.toml 부재로 인한 StreamlitSecretNotFoundError 발생 시 .env 조회
         val = os.getenv(key, default)
         
-    # .env에 붙어있을 수 있는 따옴표 제거 처리
+    # 따옴표 기호가 포함되어 있을 경우 안전하게 제거
     if isinstance(val, str):
         val = val.strip().strip("\"'")
     return val
