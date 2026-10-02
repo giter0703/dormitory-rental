@@ -3,3 +3,4 @@ gspread
 google-auth
 streamlit-authenticator
 requests
+python-dotenv
