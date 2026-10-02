@@ -44,13 +44,13 @@ st.markdown(
         text-overflow: ellipsis;
     }
     .item-badge {
-        font-size: 15px;
+        font-size: 20px;
         font-weight: 700;
         color: #1e88e5;
         margin-left: 8px;
     }
     .item-badge-empty {
-        font-size: 15px;
+        font-size: 19px;
         font-weight: 700;
         color: #d32f2f;
         margin-left: 8px;
