@@ -16,7 +16,7 @@ st.set_page_config(
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 7  # 사생 최대 대여 가능 일수
+MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite: 20]
 
 # ==========================================
 # [모바일/데스크탑 반응형 CSS]
@@ -24,53 +24,44 @@ MAX_RENTAL_DAYS = 7  # 사생 최대 대여 가능 일수
 st.markdown(
     """
     <style>
-    /* 물품 카드 공통 스타일 */
+    /* 물품 카드 심플 스타일 */
     .item-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 14px;
-        margin-bottom: 12px;
+        padding: 12px 12px;
+        margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
-    .item-title {
-        font-size: 18px;
+    .item-info {
+        font-size: 16px;
         font-weight: 600;
-        margin-bottom: 6px;
         color: #111111;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .item-qty {
-        font-size: 20px;
-        font-weight: bold;
+    .item-badge {
+        font-size: 16px;
+        font-weight: 700;
         color: #1e88e5;
-        margin-bottom: 4px;
-    }
-    .item-sub {
-        font-size: 14px;
-        color: #666666;
+        margin-left: 8px;
     }
 
     /* 모바일 전용 반응형 스타일 (화면 너비 768px 이하) */
     @media screen and (max-width: 768px) {
         .item-card {
-            padding: 8px 10px;
+            padding: 10px 12px;
             margin-bottom: 8px;
         }
-        .item-title {
+        .item-info {
             font-size: 14px;
         }
-        .item-qty {
-            font-size: 16px;
-        }
-        .item-sub {
-            font-size: 11px;
-        }
-        /* Streamlit 기본 metric 상하 여백 축소 */
-        [data-testid="stMetricValue"] {
-            font-size: 1.2rem !important;
+        .item-badge {
+            font-size: 14px;
         }
     }
     </style>
@@ -100,15 +91,27 @@ except Exception:
 
 st.markdown("---")
 
-# 탭 분리: 1. 물품 현황, 2. 대여 신청, 3. 결과 조회
+# 순정 Streamlit 탭 스타일[cite: 20]
 tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
 
-# 물품 데이터 캐싱 성격 로드
+# 물품 데이터 로드[cite: 20]
 items = []
 try:
     items = sm.get_all_items()
 except Exception:
     pass
+
+# 물품명 -> 잔여 수량 매핑 딕셔너리 생성[cite: 20]
+item_qty_map = {}
+available_items = []
+for it in items:
+    clean_it = {str(k).strip(): v for k, v in it.items()}
+    i_name = clean_it.get("item_name", "")
+    avail_val = clean_it.get("available_qty", 0)
+    qty = int(avail_val) if str(avail_val).isdigit() else 0
+    item_qty_map[i_name] = qty
+    if qty > 0 and i_name:
+        available_items.append(i_name)
 
 # ==========================================
 # [탭 1: 대여 가능 물품 현황]
@@ -119,25 +122,23 @@ with tab_status:
     if not items:
         st.info("현재 등록된 물품이 없습니다.")
     else:
-        # 데스크탑 기준 5칸 단위 분할 배치 (모바일 접속 시 CSS로 컴팩트하게 축소됨)
-        for i in range(0, len(items), 5):
-            cols = st.columns(5)
-            for j, item in enumerate(items[i:i+5]):
+        for i in range(0, len(items), 6):
+            cols = st.columns(6)
+            for j, item in enumerate(items[i:i+6]):
                 clean_item = {str(k).strip(): v for k, v in item.items()}
                 with cols[j]:
                     name = clean_item.get("item_name", "물품")
                     avail_raw = clean_item.get("available_qty", 0)
                     avail = int(avail_raw) if str(avail_raw).isdigit() else 0
                     total = clean_item.get("total_qty", "-")
-                    loc = clean_item.get("location", "-")
                     status_icon = "🟢" if avail > 0 else "🔴"
 
+                    # 예시 포맷: 🟢 진공청소기 2/5 (버튼 없이 심플 표시)
                     st.markdown(
                         f"""
                         <div class="item-card">
-                            <div class="item-title">{status_icon} {name}</div>
-                            <div class="item-qty">{avail}개 대여 가능</div>
-                            <div class="item-sub">전체 {total}개 | 📍 {loc}</div>
+                            <span class="item-info">{status_icon} {name}</span>
+                            <span class="item-badge">{avail}/{total}</span>
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -149,12 +150,7 @@ with tab_status:
 with tab_apply:
     st.subheader("대여 신청서 작성")
 
-    available_names = [
-        it.get("item_name", "") for it in items 
-        if str(it.get("available_qty", 0)).isdigit() and int(it.get("available_qty", 0)) > 0
-    ]
-
-    if not available_names:
+    if not available_items:
         st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
     else:
         with st.form("apply_form", clear_on_submit=True):
@@ -166,7 +162,12 @@ with tab_apply:
                 s_name = st.text_input("이름", placeholder="예: 홍길동")
                 s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@s.scnu.ac.kr")
             with col2:
-                s_item = st.selectbox("신청 물품 선택", available_names)
+                # 드롭다운에 실시간 잔여 수량 표시[cite: 20]
+                s_item = st.selectbox(
+                    "신청 물품 선택", 
+                    available_items, 
+                    format_func=lambda x: f"{x} (대여가능: {item_qty_map.get(x, 0)}개)"
+                )
                 r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
                 r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
                 
@@ -240,7 +241,7 @@ with tab_apply:
 # [탭 3: 결과 조회]
 # ==========================================
 with tab_query:
-    st.subheader("신청 상태 조회")
+    st.subheader("신청 상태 조회(학번)")
     col_input, col_btn = st.columns([3, 1])
     with col_input:
         q_id = st.text_input("학번 입력", placeholder="예: 20241234", label_visibility="collapsed")

@@ -3,6 +3,9 @@ import gspread
 import json
 import os
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 SPREADSHEET_KEY = "1kC6zFlFXRdgPYP5_MX_L8N9gDIokx2BHrCqTqn7qrGg"
 JSON_KEY_FILE = "service_account.json"
@@ -81,7 +84,6 @@ def get_all_rentals():
     
     records = []
     for r in rows[1:]:
-        # 데이터가 부족한 행 방어 (최소 15열 확보)
         while len(r) < 15:
             r.append("")
             
@@ -186,3 +188,34 @@ def complete_return(rental_id, item_name):
 def get_rentals_by_student(student_id):
     all_rentals = get_all_rentals()
     return [r for r in all_rentals if str(r.get("student_id")).strip() == str(student_id).strip()]
+
+# ----------------- 이메일 알림 전송 모듈 -----------------
+def send_email_notification(to_email, subject, body_html):
+    """사생 및 관리자에게 이메일 알림을 전송하는 함수"""
+    try:
+        if "smtp" not in st.secrets:
+            return False
+            
+        smtp_conf = st.secrets["smtp"]
+        sender_email = smtp_conf.get("sender_email")
+        app_password = smtp_conf.get("app_password")
+        server = smtp_conf.get("server", "smtp.gmail.com")
+        port = int(smtp_conf.get("port", 465))
+        
+        if not sender_email or not app_password or not to_email:
+            return False
+            
+        msg = MIMEMultipart()
+        msg["From"] = f"생활관 자치회 <{sender_email}>"
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body_html, "html", "utf-8"))
+        
+        with smtplib.SMTP_SSL(server, port, timeout=10) as smtp:
+            smtp.login(sender_email, app_password)
+            smtp.send_message(msg)
+            
+        return True
+    except Exception as e:
+        print(f"이메일 발송 중 오류: {e}")
+        return False

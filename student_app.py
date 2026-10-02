@@ -14,7 +14,7 @@ st.set_page_config(
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite: 20]
+MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite: 14]
 
 # ==========================================
 # [모바일/데스크탑 반응형 CSS]
@@ -27,7 +27,7 @@ st.markdown(
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 14px;
+        padding: 12px 12px;
         margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         display: flex;
@@ -89,17 +89,16 @@ except Exception:
 
 st.markdown("---")
 
-# 순정 Streamlit 탭 스타일[cite: 20]
 tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
 
-# 물품 데이터 로드[cite: 20]
+# 물품 데이터 로드[cite: 14]
 items = []
 try:
     items = sm.get_all_items()
 except Exception:
     pass
 
-# 물품명 -> 잔여 수량 매핑 딕셔너리 생성[cite: 20]
+# 물품명 -> 잔여 수량 매핑 딕셔너리 생성[cite: 14]
 item_qty_map = {}
 available_items = []
 for it in items:
@@ -131,7 +130,6 @@ with tab_status:
                     total = clean_item.get("total_qty", "-")
                     status_icon = "🟢" if avail > 0 else "🔴"
 
-                    # 예시 포맷: 🟢 진공청소기 2/5 (버튼 없이 심플 표시)
                     st.markdown(
                         f"""
                         <div class="item-card">
@@ -160,7 +158,6 @@ with tab_apply:
                 s_name = st.text_input("이름", placeholder="예: 홍길동")
                 s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@s.scnu.ac.kr")
             with col2:
-                # 드롭다운에 실시간 잔여 수량 표시[cite: 20]
                 s_item = st.selectbox(
                     "신청 물품 선택", 
                     available_items, 
@@ -230,8 +227,45 @@ with tab_apply:
                                 agreement=agreement,
                                 email=s_email.strip()
                             )
+                            
+                        # 📩 1) 사생에게 접수 확인 이메일 발송
+                        student_subj = f"[생활관 자치회] {s_item} 물품 대여 신청이 정상 접수되었습니다."
+                        student_body = f"""
+                        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                            <h2 style="color: #1e88e5;">📦 물품 대여 신청 접수 안내</h2>
+                            <p><b>{s_name}</b>님, 생활관 자치회 물품 대여 신청이 정상 접수되었습니다.</p>
+                            <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 15px 0;">
+                                <tr><td style="padding: 8px; border-bottom: 1px solid #ddd; background: #f9f9f9; width: 120px;"><b>신청 번호</b></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">{new_id}</td></tr>
+                                <tr><td style="padding: 8px; border-bottom: 1px solid #ddd; background: #f9f9f9;"><b>신청 물품</b></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">{s_item}</td></tr>
+                                <tr><td style="padding: 8px; border-bottom: 1px solid #ddd; background: #f9f9f9;"><b>소속 호실</b></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">{s_building} {s_room}호</td></tr>
+                                <tr><td style="padding: 8px; border-bottom: 1px solid #ddd; background: #f9f9f9;"><b>대여 희망일시</b></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">{desired_str}</td></tr>
+                                <tr><td style="padding: 8px; border-bottom: 1px solid #ddd; background: #f9f9f9;"><b>반납 예정일</b></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">{exp_ret_str}</td></tr>
+                            </table>
+                            <p style="color: #666; font-size: 13px;">※ 자치회 검토 후 승인 결과 메일이 추가로 발송됩니다.</p>
+                        </div>
+                        """
+                        sm.send_email_notification(s_email.strip(), student_subj, student_body)
+
+                        # 📩 2) 관리자에게 신규 신청 알림 메일 발송 (Secrets에 admin_email이 설정된 경우)
+                        if "smtp" in st.secrets and "admin_email" in st.secrets["smtp"]:
+                            admin_recv = st.secrets["smtp"]["admin_email"]
+                            admin_subj = f"[신규 대여신청] {s_building} {s_name}님 ({s_item})"
+                            admin_body = f"""
+                            <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+                                <h3 style="color: #d32f2f;">🔔 새로운 물품 대여 신청이 접수되었습니다.</h3>
+                                <p>관리자 포털에서 승인 또는 반려 처리를 진행해 주세요.</p>
+                                <ul>
+                                    <li><b>신청자:</b> {s_name} ({s_id} / {s_building} {s_room}호)</li>
+                                    <li><b>신청 물품:</b> {s_item}</li>
+                                    <li><b>희망 일시:</b> {desired_str}</li>
+                                    <li><b>반납 예정:</b> {exp_ret_str}</li>
+                                </ul>
+                            </div>
+                            """
+                            sm.send_email_notification(admin_recv, admin_subj, admin_body)
+
                         st.success(f"신청이 정상 접수되었습니다! (신청번호: {new_id})")
-                        st.info("생활관 자치회 검토 후 승인 결과가 확정됩니다. '내 신청 결과 조회' 탭에서 상태를 확인하세요.")
+                        st.info("입력하신 이메일로 접수 확인 메일이 발송되었습니다. 생활관 자치회 검토 후 승인 결과가 확정됩니다.")
                     except Exception as err:
                         st.error(f"신청서 저장 중 오류가 발생했습니다: {err}")
 
@@ -239,7 +273,7 @@ with tab_apply:
 # [탭 3: 결과 조회]
 # ==========================================
 with tab_query:
-    st.subheader("신청 상태 조회")
+    st.subheader("신청 상태 조회(학번)")
     col_input, col_btn = st.columns([3, 1])
     with col_input:
         q_id = st.text_input("학번 입력", placeholder="예: 20241234", label_visibility="collapsed")

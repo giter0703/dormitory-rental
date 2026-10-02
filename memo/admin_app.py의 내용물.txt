@@ -1,5 +1,4 @@
 ###스크립트명 : admin_app.py
-
 import streamlit as st
 import streamlit_authenticator as stauth
 import sheet_manager as sm
