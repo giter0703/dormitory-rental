@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import sheet_manager as sm
 
 # 페이지 설정
@@ -9,8 +9,12 @@ st.set_page_config(
     layout="wide"
 )
 
+# ==========================================
+# [설정 변수]
+# ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
+MAX_RENTAL_DAYS = 7  # 💡 사생이 최대로 대여할 수 있는 일수 제한 (원하는 일수로 수정 가능)
 
 st.title("📦 생활관 자치회 물품 대여 신청")
 st.caption("관생 전용 대여 신청 및 승인 결과 확인 포털")
@@ -59,7 +63,7 @@ with tab_apply:
                     avail_raw = clean_item.get("available_qty", 0)
                     avail = int(avail_raw) if str(avail_raw).isdigit() else 0
                     total = clean_item.get("total_qty", "-")
-                    loc = clean_item.get("location", " ")
+                    loc = clean_item.get("location", "-")
 
                     with st.container(border=True):
                         st.markdown(f"**{name}**")
@@ -92,7 +96,16 @@ with tab_apply:
                 s_item = st.selectbox("신청 물품 선택", available_names)
                 r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
                 r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
-                exp_ret_date = st.date_input("반납 예정 일자", min_value=r_date, value=r_date)
+                
+                # 최대 반납 가능 일자 계산
+                max_return_date = r_date + timedelta(days=MAX_RENTAL_DAYS)
+                
+                exp_ret_date = st.date_input(
+                    "반납 예정 일자", 
+                    min_value=r_date, 
+                    max_value=max_return_date, 
+                    value=r_date
+                )
 
             st.markdown("---")
             st.subheader("서약서 동의")
