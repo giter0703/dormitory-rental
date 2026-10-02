@@ -14,7 +14,13 @@ st.set_page_config(
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지
+MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 (26.12.20까지)
+
+# 세션 상태 초기화 (탭 제어 및 선택 물품 기억)
+if "active_tab" not in st.session_state:
+    st.session_state["active_tab"] = "📦 대여 가능 물품"
+if "selected_item" not in st.session_state:
+    st.session_state["selected_item"] = None
 
 # ==========================================
 # [모바일/데스크탑 반응형 CSS]
@@ -26,13 +32,12 @@ st.markdown(
     .item-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
-        border-radius: 8px;
+        border-radius: 8px 8px 0 0;
         padding: 12px 12px;
-        margin-bottom: 12px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .item-title {
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 600;
         margin-bottom: 6px;
         color: #111111;
@@ -41,13 +46,13 @@ st.markdown(
         text-overflow: ellipsis;
     }
     .item-qty {
-        font-size: 20px;
+        font-size: 19px;
         font-weight: bold;
         color: #1e88e5;
         margin-bottom: 4px;
     }
     .item-sub {
-        font-size: 14px;
+        font-size: 13px;
         color: #666666;
     }
 
@@ -55,7 +60,6 @@ st.markdown(
     @media screen and (max-width: 768px) {
         .item-card {
             padding: 8px 10px;
-            margin-bottom: 8px;
         }
         .item-title {
             font-size: 14px;
@@ -65,10 +69,6 @@ st.markdown(
         }
         .item-sub {
             font-size: 12px;
-        }
-        /* Streamlit 기본 metric 상하 여백 축소 */
-        [data-testid="stMetricValue"] {
-            font-size: 1.2rem !important;
         }
     }
     </style>
@@ -98,26 +98,46 @@ except Exception:
 
 st.markdown("---")
 
-# 탭 분리: 1. 물품 현황, 2. 대여 신청, 3. 결과 조회
-tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
+# 세션 상태 연동 네비게이션 탭 (동적 전환 가능)
+tab_names = ["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"]
+selected_tab = st.radio(
+    "메뉴 선택",
+    tab_names,
+    index=tab_names.index(st.session_state["active_tab"]),
+    horizontal=True,
+    label_visibility="collapsed",
+    key="nav_radio"
+)
+st.session_state["active_tab"] = selected_tab
 
-# 물품 데이터 캐싱 성격 로드
+# 물품 데이터 로드
 items = []
 try:
     items = sm.get_all_items()
 except Exception:
     pass
 
+# 물품명 -> 잔여 수량 매핑 딕셔너리 생성
+item_qty_map = {}
+available_items = []
+for it in items:
+    clean_it = {str(k).strip(): v for k, v in it.items()}
+    i_name = clean_it.get("item_name", "")
+    avail_val = clean_it.get("available_qty", 0)
+    qty = int(avail_val) if str(avail_val).isdigit() else 0
+    item_qty_map[i_name] = qty
+    if qty > 0 and i_name:
+        available_items.append(i_name)
+
 # ==========================================
 # [탭 1: 대여 가능 물품 현황]
 # ==========================================
-with tab_status:
+if st.session_state["active_tab"] == "📦 대여 가능 물품":
     st.subheader("실시간 대여 가능 물품")
     
     if not items:
         st.info("현재 등록된 물품이 없습니다.")
     else:
-        # 데스크탑 기준 5칸 단위 분할 배치 (모바일 접속 시 CSS로 컴팩트하게 축소됨)
         for i in range(0, len(items), 6):
             cols = st.columns(6)
             for j, item in enumerate(items[i:i+6]):
@@ -134,27 +154,36 @@ with tab_status:
                         f"""
                         <div class="item-card">
                             <div class="item-title">{status_icon} {name}</div>
-                            <div class="item-qty">{avail}개 대여 가능</div>
+                            <div class="item-qty">{avail}개 남음</div>
                             <div class="item-sub">전체 {total}개 | 📍 {loc}</div>
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
+                    
+                    # 물품 카드 바로 아래 대여 신청 이동 버튼 연동
+                    if avail > 0:
+                        if st.button("신청하기 👉", key=f"btn_card_{name}_{i}_{j}", use_container_width=True):
+                            st.session_state["selected_item"] = name
+                            st.session_state["active_tab"] = "📝 대여 신청하기"
+                            st.rerun()
+                    else:
+                        st.button("품절 (대여불가)", key=f"btn_disabled_{name}_{i}_{j}", disabled=True, use_container_width=True)
 
 # ==========================================
 # [탭 2: 대여 신청]
 # ==========================================
-with tab_apply:
+elif st.session_state["active_tab"] == "📝 대여 신청하기":
     st.subheader("대여 신청서 작성")
 
-    available_names = [
-        it.get("item_name", "") for it in items 
-        if str(it.get("available_qty", 0)).isdigit() and int(it.get("available_qty", 0)) > 0
-    ]
-
-    if not available_names:
-        st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
+    if not available_items:
+        st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 메뉴에서 잔여 수량을 확인해 주세요.")
     else:
+        # 직전 카드에서 클릭한 물품이 있을 경우 자동 선택
+        default_idx = 0
+        if st.session_state["selected_item"] in available_items:
+            default_idx = available_items.index(st.session_state["selected_item"])
+
         with st.form("apply_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -164,7 +193,13 @@ with tab_apply:
                 s_name = st.text_input("이름", placeholder="예: 홍길동")
                 s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@s.scnu.ac.kr")
             with col2:
-                s_item = st.selectbox("신청 물품 선택", available_names)
+                # 잔여 수량이 드롭다운 목록에 함께 표시되도록 format_func 적용
+                s_item = st.selectbox(
+                    "신청 물품 선택", 
+                    available_items, 
+                    index=default_idx,
+                    format_func=lambda x: f"{x} (대여가능: {item_qty_map.get(x, 0)}개)"
+                )
                 r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
                 r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
                 
@@ -230,14 +265,15 @@ with tab_apply:
                                 email=s_email.strip()
                             )
                         st.success(f"신청이 정상 접수되었습니다! (신청번호: {new_id})")
-                        st.info("생활관 자치회 검토 후 승인 결과가 확정됩니다. '내 신청 결과 조회' 탭에서 상태를 확인하세요.")
+                        st.info("생활관 자치회 검토 후 승인 결과가 확정됩니다. '내 신청 결과 조회' 메뉴에서 상태를 확인하세요.")
+                        st.session_state["selected_item"] = None
                     except Exception as err:
                         st.error(f"신청서 저장 중 오류가 발생했습니다: {err}")
 
 # ==========================================
 # [탭 3: 결과 조회]
 # ==========================================
-with tab_query:
+elif st.session_state["active_tab"] == "🔍 내 신청 결과 조회":
     st.subheader("신청 상태 조회")
     col_input, col_btn = st.columns([3, 1])
     with col_input:
