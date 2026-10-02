@@ -18,17 +18,17 @@ TIME_OPTIONS = ["선택하세요", "20:00~20:30", "20:30~21:00"]
 MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수
 
 # ==========================================
-# [모바일/데스크탑 반응형 CSS]
+# [모바일 2열 나열 및 반응형 CSS]
 # ==========================================
 st.markdown(
     """
     <style>
-    /* 물품 카드 스타일 */
+    /* 물품 카드 기본 데스크탑 스타일 */
     .item-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 12px;
+        padding: 12px 14px;
         margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         display: flex;
@@ -36,7 +36,7 @@ st.markdown(
         justify-content: space-between;
     }
     .item-info {
-        font-size: 20px;
+        font-size: 16px;
         font-weight: 600;
         color: #111111;
         white-space: nowrap;
@@ -44,28 +44,49 @@ st.markdown(
         text-overflow: ellipsis;
     }
     .item-badge {
-        font-size: 20px;
+        font-size: 16px;
         font-weight: 700;
         color: #1e88e5;
-        margin-left: 8px;
+        margin-left: 6px;
+        white-space: nowrap;
     }
     .item-badge-empty {
-        font-size: 19px;
+        font-size: 14px;
         font-weight: 700;
         color: #d32f2f;
-        margin-left: 8px;
+        margin-left: 6px;
+        white-space: nowrap;
     }
 
+    /* 모바일 반응형: 화면 너비 768px 이하에서 1행 2열 강제 배치 */
     @media screen and (max-width: 768px) {
+        /* Streamlit columns의 모바일 1열 자동 세로 정렬을 2열 그리드로 전환 */
+        div[data-testid="stHorizontalBlock"] {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+            margin-bottom: 0px !important;
+        }
+
+        /* 각 컬럼 너비 강제 조정 */
+        div[data-testid="stColumn"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex: unset !important;
+        }
+
         .item-card {
-            padding: 10px 12px;
+            padding: 10px 8px;
             margin-bottom: 8px;
         }
         .item-info {
             font-size: 14px;
         }
-        .item-badge, .item-badge-empty {
+        .item-badge {
             font-size: 14px;
+        }
+        .item-badge-empty {
+            font-size: 12px;
         }
     }
     </style>
@@ -104,7 +125,7 @@ try:
 except Exception:
     raw_items = []
 
-# [요구사항 2] total_qty와 available_qty 정제 및 대여 가능 물품 선별
+# total_qty와 available_qty 정제 및 대여 가능 물품 선별
 processed_items = []
 item_qty_map = {}
 available_items = []
@@ -122,7 +143,6 @@ for it in raw_items:
     total_qty = int(raw_total) if str(raw_total).isdigit() else 0
     avail_qty = int(raw_avail) if str(raw_avail).isdigit() else 0
     
-    # 이용가능 수량이 전체 수량을 초과하지 않도록 보정
     if avail_qty > total_qty:
         avail_qty = total_qty
     if avail_qty < 0:
@@ -136,7 +156,6 @@ for it in raw_items:
     processed_items.append(item_record)
     item_qty_map[i_name] = {"avail": avail_qty, "total": total_qty}
 
-    # available_qty가 0보다 큰 경우에만 대여 가능 목록에 포함 (0이면 대여 불가)
     if avail_qty > 0:
         available_items.append(i_name)
 
@@ -149,21 +168,22 @@ with tab_status:
     if not processed_items:
         st.info("현재 등록된 물품이 없습니다.")
     else:
+        # PC에서는 6열, 모바일에서는 CSS에 의해 1행 2열로 자동 변환 배치
         for i in range(0, len(processed_items), 6):
+            chunk = processed_items[i:i+6]
             cols = st.columns(6)
-            for j, item in enumerate(processed_items[i:i+6]):
+            for j, item in enumerate(chunk):
                 with cols[j]:
                     name = item["item_name"]
                     avail = item["available_qty"]
                     total = item["total_qty"]
                     
-                    # [요구사항 2 & 3] 0개면 대여불가 표시, "이용가능한 수량/전체 수량" 형식 적용
                     if avail > 0:
                         status_icon = "🟢"
                         badge_html = f'<span class="item-badge">{avail}/{total}</span>'
                     else:
                         status_icon = "🔴"
-                        badge_html = f'<span class="item-badge-empty">대여불가 (0/{total})</span>'
+                        badge_html = f'<span class="item-badge-empty">0/{total}</span>'
 
                     st.markdown(
                         f"""
@@ -187,7 +207,6 @@ with tab_apply:
         with st.form("apply_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                # [요구사항 1] 생활관명 기본 선택 방지
                 s_building = st.selectbox("생활관명 선택 *", BUILDING_OPTIONS, index=0)
                 s_room = st.text_input("호실 번호 *", placeholder="예: 402호")
                 s_id = st.text_input("학번 *", placeholder="예: 20241001", max_chars=10)
@@ -195,7 +214,6 @@ with tab_apply:
                 s_email = st.text_input("이메일 (학교 웹메일 또는 G메일) *", placeholder="예: user@s.scnu.ac.kr")
             
             with col2:
-                # [요구사항 1 & 2] 물품 선택 드롭다운 (대여 가능 수량 표기)
                 item_dropdown_options = ["선택하세요"] + available_items
                 s_item = st.selectbox(
                     "신청 물품 선택 *", 
@@ -242,12 +260,10 @@ with tab_apply:
             except Exception:
                 pass
             
-            # [요구사항 1] 기본 선택 없이 사생이 직접 '동의'를 클릭하도록 유도
             agreement = st.radio("위 서약 내용에 동의하십니까? *", ["선택안함", "동의", "비동의"], index=0, horizontal=True)
 
             submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
 
-            # [요구사항 1] 모든 항목 직접 입력 및 선택 여부 검증
             if submit_btn:
                 missing_fields = []
                 if s_building == "선택하세요":
