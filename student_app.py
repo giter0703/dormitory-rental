@@ -14,7 +14,67 @@ st.set_page_config(
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 7  # 💡 사생이 최대로 대여할 수 있는 일수 제한 (원하는 일수로 수정 가능)
+MAX_RENTAL_DAYS = 7  # 사생 최대 대여 가능 일수
+
+# ==========================================
+# [모바일/데스크탑 반응형 CSS]
+# ==========================================
+st.markdown(
+    """
+    <style>
+    /* 물품 카드 공통 스타일 */
+    .item-card {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .item-title {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: #111111;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .item-qty {
+        font-size: 18px;
+        font-weight: bold;
+        color: #1e88e5;
+        margin-bottom: 4px;
+    }
+    .item-sub {
+        font-size: 12px;
+        color: #666666;
+    }
+
+    /* 모바일 전용 반응형 스타일 (화면 너비 768px 이하) */
+    @media screen and (max-width: 768px) {
+        .item-card {
+            padding: 8px 10px;
+            margin-bottom: 8px;
+        }
+        .item-title {
+            font-size: 14px;
+        }
+        .item-qty {
+            font-size: 16px;
+        }
+        .item-sub {
+            font-size: 11px;
+        }
+        /* Streamlit 기본 metric 상하 여백 축소 */
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 st.title("📦 생활관 자치회 물품 대여 신청")
 st.caption("관생 전용 대여 신청 및 승인 결과 확인 포털")
@@ -26,8 +86,8 @@ try:
         formatted_notice = admin_notice.replace("\n", "<br>")
         st.markdown(
             f"""
-            <div style="background-color: #f0f7ff; border-left: 6px solid #1e88e5; padding: 16px 20px; border-radius: 6px; margin-top: 10px; margin-bottom: 20px; color: #0d47a1; font-size: {NOTICE_FONT_SIZE}; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                <div style="font-weight: bold; font-size: calc({NOTICE_FONT_SIZE} + 2px); margin-bottom: 8px;">📢 [생활관 물품 대여 중요 안내사항]</div>
+            <div style="background-color: #f0f7ff; border-left: 6px solid #1e88e5; padding: 14px 18px; border-radius: 6px; margin-top: 10px; margin-bottom: 18px; color: #0d47a1; font-size: {NOTICE_FONT_SIZE}; line-height: 1.5; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+                <div style="font-weight: bold; font-size: calc({NOTICE_FONT_SIZE} + 1px); margin-bottom: 6px;">📢 [생활관 물품 대여 중요 안내사항]</div>
                 {formatted_notice}
             </div>
             """,
@@ -38,22 +98,26 @@ except Exception:
 
 st.markdown("---")
 
-tab_apply, tab_query = st.tabs(["📋 대여 신청하기", "🔍 내 신청 결과 조회"])
+# 탭 분리: 1. 물품 현황, 2. 대여 신청, 3. 결과 조회
+tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
+
+# 물품 데이터 캐싱 성격 로드
+items = []
+try:
+    items = sm.get_all_items()
+except Exception:
+    pass
 
 # ==========================================
-# [탭 1: 대여 신청]
+# [탭 1: 대여 가능 물품 현황]
 # ==========================================
-with tab_apply:
-    st.subheader("대여 가능 물품 현황")
+with tab_status:
+    st.subheader("실시간 대여 가능 물품")
     
-    items = []
-    try:
-        items = sm.get_all_items()
-    except Exception as e:
-        st.error("⚠️ 서버와 통신할 수 없습니다. 시트 KEY 설정 및 네트워크 상태를 확인해주세요.")
-
-    if items:
-        # 5개 단위로 카드 배치 (가시성 향상)
+    if not items:
+        st.info("현재 등록된 물품이 없습니다.")
+    else:
+        # 데스크탑 기준 5칸 단위 분할 배치 (모바일 접속 시 CSS로 컴팩트하게 축소됨)
         for i in range(0, len(items), 5):
             cols = st.columns(5)
             for j, item in enumerate(items[i:i+5]):
@@ -64,17 +128,24 @@ with tab_apply:
                     avail = int(avail_raw) if str(avail_raw).isdigit() else 0
                     total = clean_item.get("total_qty", "-")
                     loc = clean_item.get("location", "-")
+                    status_icon = "🟢" if avail > 0 else "🔴"
 
-                    with st.container(border=True):
-                        st.markdown(f"**{name}**")
-                        status_icon = "🟢" if avail > 0 else "🔴"
-                        st.metric(label="남은 수량", value=f"{avail}개", delta=f"총 {total}개", delta_color="off")
-                        st.caption(f"📍 {loc}")
-    else:
-        st.info("등록된 물품이 없습니다.")
+                    st.markdown(
+                        f"""
+                        <div class="item-card">
+                            <div class="item-title">{status_icon} {name}</div>
+                            <div class="item-qty">{avail}개 대여 가능</div>
+                            <div class="item-sub">전체 {total}개 | 📍 {loc}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
-    st.markdown("---")
-    st.subheader("신청서 작성")
+# ==========================================
+# [탭 2: 대여 신청]
+# ==========================================
+with tab_apply:
+    st.subheader("대여 신청서 작성")
 
     available_names = [
         it.get("item_name", "") for it in items 
@@ -82,7 +153,7 @@ with tab_apply:
     ]
 
     if not available_names:
-        st.error("현재 대여 가능한 물품이 없습니다.")
+        st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
     else:
         with st.form("apply_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
@@ -97,9 +168,7 @@ with tab_apply:
                 r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
                 r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
                 
-                # 최대 반납 가능 일자 계산
                 max_return_date = r_date + timedelta(days=MAX_RENTAL_DAYS)
-                
                 exp_ret_date = st.date_input(
                     "반납 예정 일자", 
                     min_value=r_date, 
@@ -113,19 +182,18 @@ with tab_apply:
                 pledge_text = sm.get_pledge()
                 if pledge_text:
                     formatted_pledge = pledge_text.replace("\n", "<br>")
-                    # 배경색이 적용된 커스텀 서약서 영역 출력
                     st.markdown(
                         f"""
                         <div style="
                             background-color: #f8f9fa; 
                             border: 1px solid #dee2e6;
                             border-left: 6px solid #6c757d; 
-                            padding: 16px 20px; 
+                            padding: 14px 18px; 
                             border-radius: 6px; 
-                            margin-top: 10px;
-                            margin-bottom: 15px;
+                            margin-top: 8px;
+                            margin-bottom: 12px;
                             color: #333333;
-                            font-size: 15px;
+                            font-size: 14px;
                             line-height: 1.6;
                         ">
                             {formatted_pledge}
@@ -136,7 +204,6 @@ with tab_apply:
             except Exception:
                 pass
             
-            # '선택해주세요' 항목을 완전히 제거하고 '동의'가 기본으로 선택되도록 구성
             agreement = st.radio("위 서약 내용에 동의하십니까?", ["동의", "비동의"], index=0, horizontal=True)
 
             submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
@@ -163,12 +230,12 @@ with tab_apply:
                                 email=s_email.strip()
                             )
                         st.success(f"신청이 정상 접수되었습니다! (신청번호: {new_id})")
-                        st.info("생활관 자치회 검토 후 승인 결과가 확정됩니다.")
+                        st.info("생활관 자치회 검토 후 승인 결과가 확정됩니다. '내 신청 결과 조회' 탭에서 상태를 확인하세요.")
                     except Exception as err:
                         st.error(f"신청서 저장 중 오류가 발생했습니다: {err}")
 
 # ==========================================
-# [탭 2: 결과 조회]
+# [탭 3: 결과 조회]
 # ==========================================
 with tab_query:
     st.subheader("신청 상태 조회")
