@@ -27,7 +27,7 @@ st.markdown(
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 14px;
+        padding: 12px 12px;
         margin-bottom: 12px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
@@ -64,7 +64,7 @@ st.markdown(
             font-size: 16px;
         }
         .item-sub {
-            font-size: 11px;
+            font-size: 12px;
         }
         /* Streamlit 기본 metric 상하 여백 축소 */
         [data-testid="stMetricValue"] {
@@ -118,9 +118,9 @@ with tab_status:
         st.info("현재 등록된 물품이 없습니다.")
     else:
         # 데스크탑 기준 5칸 단위 분할 배치 (모바일 접속 시 CSS로 컴팩트하게 축소됨)
-        for i in range(0, len(items), 5):
-            cols = st.columns(5)
-            for j, item in enumerate(items[i:i+5]):
+        for i in range(0, len(items), 6):
+            cols = st.columns(6)
+            for j, item in enumerate(items[i:i+6]):
                 clean_item = {str(k).strip(): v for k, v in item.items()}
                 with cols[j]:
                     name = clean_item.get("item_name", "물품")
