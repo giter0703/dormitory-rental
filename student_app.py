@@ -13,8 +13,9 @@ st.set_page_config(
 # [설정 변수]
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
-BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite: 14]
+BUILDING_OPTIONS = ["선택하세요", "웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
+TIME_OPTIONS = ["선택하세요", "20:00~20:30", "20:30~21:00"]
+MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수
 
 # ==========================================
 # [모바일/데스크탑 반응형 CSS]
@@ -22,12 +23,12 @@ MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite:
 st.markdown(
     """
     <style>
-    /* 물품 카드 심플 스타일 */
+    /* 물품 카드 스타일 */
     .item-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 12px;
+        padding: 12px 14px;
         margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         display: flex;
@@ -35,7 +36,7 @@ st.markdown(
         justify-content: space-between;
     }
     .item-info {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 600;
         color: #111111;
         white-space: nowrap;
@@ -43,13 +44,18 @@ st.markdown(
         text-overflow: ellipsis;
     }
     .item-badge {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
         color: #1e88e5;
         margin-left: 8px;
     }
+    .item-badge-empty {
+        font-size: 15px;
+        font-weight: 700;
+        color: #d32f2f;
+        margin-left: 8px;
+    }
 
-    /* 모바일 전용 반응형 스타일 (화면 너비 768px 이하) */
     @media screen and (max-width: 768px) {
         .item-card {
             padding: 10px 12px;
@@ -58,7 +64,7 @@ st.markdown(
         .item-info {
             font-size: 14px;
         }
-        .item-badge {
+        .item-badge, .item-badge-empty {
             font-size: 14px;
         }
     }
@@ -91,23 +97,47 @@ st.markdown("---")
 
 tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
 
-# 물품 데이터 로드[cite: 14]
-items = []
+# 물품 데이터 로드
+raw_items = []
 try:
-    items = sm.get_all_items()
+    raw_items = sm.get_all_items()
 except Exception:
-    pass
+    raw_items = []
 
-# 물품명 -> 잔여 수량 매핑 딕셔너리 생성[cite: 14]
+# [요구사항 2] total_qty와 available_qty 정제 및 대여 가능 물품 선별
+processed_items = []
 item_qty_map = {}
 available_items = []
-for it in items:
+
+for it in raw_items:
     clean_it = {str(k).strip(): v for k, v in it.items()}
-    i_name = clean_it.get("item_name", "")
-    avail_val = clean_it.get("available_qty", 0)
-    qty = int(avail_val) if str(avail_val).isdigit() else 0
-    item_qty_map[i_name] = qty
-    if qty > 0 and i_name:
+    i_name = str(clean_it.get("item_name", "")).strip()
+    if not i_name:
+        continue
+
+    # 수량 파싱 및 정합성 보정 (available_qty <= total_qty)
+    raw_total = clean_it.get("total_qty", 0)
+    raw_avail = clean_it.get("available_qty", 0)
+    
+    total_qty = int(raw_total) if str(raw_total).isdigit() else 0
+    avail_qty = int(raw_avail) if str(raw_avail).isdigit() else 0
+    
+    # 이용가능 수량이 전체 수량을 초과하지 않도록 보정
+    if avail_qty > total_qty:
+        avail_qty = total_qty
+    if avail_qty < 0:
+        avail_qty = 0
+
+    item_record = {
+        "item_name": i_name,
+        "available_qty": avail_qty,
+        "total_qty": total_qty
+    }
+    processed_items.append(item_record)
+    item_qty_map[i_name] = {"avail": avail_qty, "total": total_qty}
+
+    # available_qty가 0보다 큰 경우에만 대여 가능 목록에 포함 (0이면 대여 불가)
+    if avail_qty > 0:
         available_items.append(i_name)
 
 # ==========================================
@@ -116,25 +146,30 @@ for it in items:
 with tab_status:
     st.subheader("실시간 대여 가능 물품")
     
-    if not items:
+    if not processed_items:
         st.info("현재 등록된 물품이 없습니다.")
     else:
-        for i in range(0, len(items), 6):
+        for i in range(0, len(processed_items), 6):
             cols = st.columns(6)
-            for j, item in enumerate(items[i:i+6]):
-                clean_item = {str(k).strip(): v for k, v in item.items()}
+            for j, item in enumerate(processed_items[i:i+6]):
                 with cols[j]:
-                    name = clean_item.get("item_name", "물품")
-                    avail_raw = clean_item.get("available_qty", 0)
-                    avail = int(avail_raw) if str(avail_raw).isdigit() else 0
-                    total = clean_item.get("total_qty", "-")
-                    status_icon = "🟢" if avail > 0 else "🔴"
+                    name = item["item_name"]
+                    avail = item["available_qty"]
+                    total = item["total_qty"]
+                    
+                    # [요구사항 2 & 3] 0개면 대여불가 표시, "이용가능한 수량/전체 수량" 형식 적용
+                    if avail > 0:
+                        status_icon = "🟢"
+                        badge_html = f'<span class="item-badge">{avail}/{total}</span>'
+                    else:
+                        status_icon = "🔴"
+                        badge_html = f'<span class="item-badge-empty">대여불가 (0/{total})</span>'
 
                     st.markdown(
                         f"""
                         <div class="item-card">
                             <span class="item-info">{status_icon} {name}</span>
-                            <span class="item-badge">{avail}/{total}</span>
+                            {badge_html}
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -152,23 +187,28 @@ with tab_apply:
         with st.form("apply_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                s_building = st.selectbox("생활관명 선택", BUILDING_OPTIONS)
-                s_room = st.text_input("호실 번호", placeholder="예: 402호")
-                s_id = st.text_input("학번", placeholder="예: 20241001", max_chars=10)
-                s_name = st.text_input("이름", placeholder="예: 홍길동")
-                s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@s.scnu.ac.kr")
+                # [요구사항 1] 생활관명 기본 선택 방지
+                s_building = st.selectbox("생활관명 선택 *", BUILDING_OPTIONS, index=0)
+                s_room = st.text_input("호실 번호 *", placeholder="예: 402호")
+                s_id = st.text_input("학번 *", placeholder="예: 20241001", max_chars=10)
+                s_name = st.text_input("이름 *", placeholder="예: 홍길동")
+                s_email = st.text_input("이메일 (학교 웹메일 또는 G메일) *", placeholder="예: user@s.scnu.ac.kr")
+            
             with col2:
+                # [요구사항 1 & 2] 물품 선택 드롭다운 (대여 가능 수량 표기)
+                item_dropdown_options = ["선택하세요"] + available_items
                 s_item = st.selectbox(
-                    "신청 물품 선택", 
-                    available_items, 
-                    format_func=lambda x: f"{x} (대여가능: {item_qty_map.get(x, 0)}개)"
+                    "신청 물품 선택 *", 
+                    item_dropdown_options,
+                    index=0,
+                    format_func=lambda x: f"{x} (이용가능: {item_qty_map[x]['avail']}/{item_qty_map[x]['total']})" if x in item_qty_map else x
                 )
-                r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
-                r_time = st.selectbox("대여 희망 시간", ["20:00~20:30", "20:30~21:00"])
+                r_date = st.date_input("대여 희망 날짜 *", min_value=date.today(), value=date.today())
+                r_time = st.selectbox("대여 희망 시간 *", TIME_OPTIONS, index=0)
                 
                 max_return_date = r_date + timedelta(days=MAX_RENTAL_DAYS)
                 exp_ret_date = st.date_input(
-                    "반납 예정 일자", 
+                    "반납 예정 일자 *", 
                     min_value=r_date, 
                     max_value=max_return_date, 
                     value=r_date
@@ -202,15 +242,37 @@ with tab_apply:
             except Exception:
                 pass
             
-            agreement = st.radio("위 서약 내용에 동의하십니까?", ["동의", "비동의"], index=0, horizontal=True)
+            # [요구사항 1] 기본 선택 없이 사생이 직접 '동의'를 클릭하도록 유도
+            agreement = st.radio("위 서약 내용에 동의하십니까? *", ["선택안함", "동의", "비동의"], index=0, horizontal=True)
 
             submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
 
+            # [요구사항 1] 모든 항목 직접 입력 및 선택 여부 검증
             if submit_btn:
-                if agreement != "동의":
-                    st.error("⚠️ 서약 내용에 동의해야 대여 신청이 가능합니다.")
-                elif not all([s_id.strip(), s_name.strip(), s_room.strip(), s_email.strip()]):
-                    st.warning("⚠️ 학번, 이름, 호실, 이메일 정보를 모두 입력해주세요.")
+                missing_fields = []
+                if s_building == "선택하세요":
+                    missing_fields.append("생활관명")
+                if not s_room.strip():
+                    missing_fields.append("호실 번호")
+                if not s_id.strip():
+                    missing_fields.append("학번")
+                if not s_name.strip():
+                    missing_fields.append("이름")
+                if not s_email.strip():
+                    missing_fields.append("이메일")
+                if s_item == "선택하세요":
+                    missing_fields.append("신청 물품")
+                if r_time == "선택하세요":
+                    missing_fields.append("대여 희망 시간")
+                if agreement == "선택안함":
+                    missing_fields.append("서약서 동의 여부")
+
+                if missing_fields:
+                    st.error(f"⚠️ 다음 필수 항목을 모두 입력하거나 선택해 주세요: {', '.join(missing_fields)}")
+                elif agreement != "동의":
+                    st.error("⚠️ 서약 내용에 '동의'하셔야 대여 신청이 완료됩니다.")
+                elif "@" not in s_email or "." not in s_email:
+                    st.error("⚠️ 올바른 이메일 주소 형식을 입력해 주세요.")
                 else:
                     desired_str = f"{r_date.strftime('%Y-%m-%d')} {r_time}"
                     exp_ret_str = exp_ret_date.strftime('%Y-%m-%d')
@@ -228,7 +290,7 @@ with tab_apply:
                                 email=s_email.strip()
                             )
                             
-                        # 📩 1) 사생에게 접수 확인 이메일 발송
+                        # 📩 1) 사생 접수 확인 이메일 발송
                         student_subj = f"[생활관 자치회] {s_item} 물품 대여 신청이 정상 접수되었습니다."
                         student_body = f"""
                         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -246,7 +308,7 @@ with tab_apply:
                         """
                         sm.send_email_notification(s_email.strip(), student_subj, student_body)
 
-                        # 📩 2) 관리자에게 신규 신청 알림 메일 발송 (Secrets에 admin_email이 설정된 경우)
+                        # 📩 2) 관리자 신규 접수 알림 이메일 발송
                         if "smtp" in st.secrets and "admin_email" in st.secrets["smtp"]:
                             admin_recv = st.secrets["smtp"]["admin_email"]
                             admin_subj = f"[신규 대여신청] {s_building} {s_name}님 ({s_item})"
