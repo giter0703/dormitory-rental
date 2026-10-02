@@ -1,3 +1,5 @@
+###스크립트명 : student_app.py
+
 import streamlit as st
 from datetime import datetime, date, timedelta
 import sheet_manager as sm
@@ -14,7 +16,7 @@ st.set_page_config(
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지
+MAX_RENTAL_DAYS = 7  # 사생 최대 대여 가능 일수
 
 # ==========================================
 # [모바일/데스크탑 반응형 CSS]
