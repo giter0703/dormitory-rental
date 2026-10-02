@@ -13,24 +13,38 @@ st.set_page_config(
     layout="wide"
 )
 
-# 1. 환경변수 / Secrets 연동 관리자 인증 설정
+# 1. 환경변수 / Secrets 연동 관리자 인증 설정 (안전한 get_env_val)
 def get_env_val(key, default=""):
-    if key in st.secrets:
-        return st.secrets[key]
-    return os.getenv(key, default)
+    val = default
+    try:
+        # Streamlit Cloud 배포 환경 또는 secrets.toml 확인
+        if key in st.secrets:
+            val = st.secrets[key]
+        else:
+            val = os.getenv(key, default)
+    except Exception:
+        # secrets.toml 부재로 인한 StreamlitSecretNotFoundError 발생 시 .env 조회
+        val = os.getenv(key, default)
+        
+    # .env에 붙어있을 수 있는 따옴표 제거 처리
+    if isinstance(val, str):
+        val = val.strip().strip("\"'")
+    return val
 
+# .env 또는 Secrets에서 관리자 계정 정보 불러오기
 admin1_id = get_env_val("ADMIN1_ID", "admin1")
 admin1_name = get_env_val("ADMIN1_NAME", "생활관 자치회원1")
-admin1_pw = get_env_val("ADMIN1_PW", "admin1234")
-admin1_email = get_env_val("ADMIN1_EMAIL", "admin1@dormitory.com")
+admin1_pw = get_env_val("ADMIN1_PW", "dorm1234")
+admin1_email = get_env_val("ADMIN1_EMAIL", "scnu.dormitory@gmail.com")
 
 admin2_id = get_env_val("ADMIN2_ID", "admin2")
 admin2_name = get_env_val("ADMIN2_NAME", "생활관 자치회원2")
-admin2_pw = get_env_val("ADMIN2_PW", "master5678")
+admin2_pw = get_env_val("ADMIN2_PW", "admin1234")
 admin2_email = get_env_val("ADMIN2_EMAIL", "master@dormitory.com")
 
 cookie_key = get_env_val("COOKIE_KEY", "dorm_super_secret_cookie_key_2026")
 
+# 비밀번호 해싱
 try:
     hasher = stauth.Hasher()
     hashed_pw1 = hasher.hash(admin1_pw)

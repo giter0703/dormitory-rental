@@ -1,7 +1,12 @@
 ###스크립트명 : admin_app.py
+import os
 import streamlit as st
 import streamlit_authenticator as stauth
 import sheet_manager as sm
+from dotenv import load_dotenv
+
+# 로컬 .env 환경변수 로드
+load_dotenv()
 
 st.set_page_config(
     page_title="생활관 자치회 물품 대여 관리자 포털",
@@ -9,26 +14,43 @@ st.set_page_config(
     layout="wide"
 )
 
-# 1. 관리자 인증 설정
+# 1. 환경변수 / Secrets 연동 관리자 인증 설정
+def get_env_val(key, default=""):
+    if key in st.secrets:
+        return st.secrets[key]
+    return os.getenv(key, default)
+
+admin1_id = get_env_val("ADMIN1_ID", "admin1")
+admin1_name = get_env_val("ADMIN1_NAME", "생활관 자치회원1")
+admin1_pw = get_env_val("ADMIN1_PW", "admin1234")
+admin1_email = get_env_val("ADMIN1_EMAIL", "admin1@gmail.com")
+
+admin2_id = get_env_val("ADMIN2_ID", "admin2")
+admin2_name = get_env_val("ADMIN2_NAME", "생활관 자치회원2")
+admin2_pw = get_env_val("ADMIN2_PW", "master5678")
+admin2_email = get_env_val("ADMIN2_EMAIL", "master@dormitory.com")
+
+cookie_key = get_env_val("COOKIE_KEY", "dorm_super_secret_cookie_key_2026")
+
 try:
     hasher = stauth.Hasher()
-    hashed_pw_admin1 = hasher.hash("admin1234")
-    hashed_pw_admin2 = hasher.hash("master5678")
+    hashed_pw1 = hasher.hash(admin1_pw)
+    hashed_pw2 = hasher.hash(admin2_pw)
 except Exception:
-    hashed_pw_admin1 = stauth.Hasher(["admin1234"]).generate()[0]
-    hashed_pw_admin2 = stauth.Hasher(["master5678"]).generate()[0]
+    hashed_pw1 = stauth.Hasher([admin1_pw]).generate()[0]
+    hashed_pw2 = stauth.Hasher([admin2_pw]).generate()[0]
 
 credentials = {
     "usernames": {
-        "admin1": {"name": "생활관 자치회원1", "password": hashed_pw_admin1, "email": "admin1@dormitory.com"},
-        "admin2": {"name": "생활관 자치회원2", "password": hashed_pw_admin2, "email": "master@dormitory.com"}
+        admin1_id: {"name": admin1_name, "password": hashed_pw1, "email": admin1_email},
+        admin2_id: {"name": admin2_name, "password": hashed_pw2, "email": admin2_email}
     }
 }
 
 authenticator = stauth.Authenticate(
     credentials,
     cookie_name="dorm_admin_auth_cookie",
-    key="dorm_super_secret_cookie_key_2026",
+    key=cookie_key,
     cookie_expiry_days=1
 )
 
@@ -44,7 +66,7 @@ elif st.session_state.get("authentication_status") is None:
     st.warning("🔒 생활관 자치회 관리자 전용 포털입니다. 로그인 정보를 입력해주세요.")
     st.stop()
 
-# 2. 관리자 화면
+# 2. 관리자 메인 화면
 with st.sidebar:
     st.write(f"👤 접속 관리자: **{st.session_state.get('name')}**님")
     try:
@@ -123,13 +145,47 @@ with tab1:
                                     confirmed_date=c_date, admin_memo=c_memo,
                                     updated_desired_date=edit_desired
                                 )
+                                # 📩 사생에게 승인 안내 메일 발송
+                                if success and email and email != "미입력":
+                                    appr_subj = f"[생활관 자치회] {item_name} 대여 신청이 승인되었습니다."
+                                    appr_body = f"""
+                                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                                        <h2 style="color: #2e7d32;">✅ 물품 대여 신청 승인 완료</h2>
+                                        <p><b>{student_name}</b>님, 신청하신 물품 대여가 최종 승인되었습니다.</p>
+                                        <div style="background-color: #f1f8e9; border-left: 5px solid #4caf50; padding: 12px 16px; margin: 15px 0;">
+                                            <p style="margin: 0; font-weight: bold; color: #1b5e20;">📍 수령 안내: {c_date}</p>
+                                            {f'<p style="margin: 5px 0 0 0; color: #333;">💬 관리자 메모: {c_memo}</p>' if c_memo else ''}
+                                        </div>
+                                        <p>안내된 수령 일시에 맞춰 생활관 자치회실로 방문해 주시기 바랍니다.</p>
+                                    </div>
+                                    """
+                                    sm.send_email_notification(email.strip(), appr_subj, appr_body)
+                                    
                             if success:
                                 st.toast(f"{student_name}님의 신청이 승인되었습니다.", icon="✅")
                                 st.rerun()
+
                     with btn_col2:
                         if st.button("🔴 반려", key=f"rej_{rental_id}", use_container_width=True):
+                            reason_msg = c_memo if c_memo else "자치회 사정 또는 재고 부족으로 반려되었습니다."
                             with st.spinner("반려 처리 중..."):
-                                sm.reject_rental(rental_id=rental_id, reject_reason=c_memo if c_memo else "자치회 사정으로 반려")
+                                sm.reject_rental(rental_id=rental_id, reject_reason=reason_msg)
+                                
+                                # 📩 사생에게 반려 안내 메일 발송
+                                if email and email != "미입력":
+                                    rej_subj = f"[생활관 자치회] {item_name} 대여 신청이 반려되었습니다."
+                                    rej_body = f"""
+                                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                                        <h2 style="color: #c62828;">❌ 물품 대여 신청 반려 안내</h2>
+                                        <p><b>{student_name}</b>님, 신청하신 <b>{item_name}</b> 대여가 부득이하게 반려되었습니다.</p>
+                                        <div style="background-color: #ffebee; border-left: 5px solid #ef5350; padding: 12px 16px; margin: 15px 0;">
+                                            <p style="margin: 0; font-weight: bold; color: #b71c1c;">📌 반려 사유: {reason_msg}</p>
+                                        </div>
+                                        <p>문의사항이 있으신 경우 생활관 자치회실로 문의해 주시기 바랍니다.</p>
+                                    </div>
+                                    """
+                                    sm.send_email_notification(email.strip(), rej_subj, rej_body)
+                                    
                             st.toast("신청이 반려되었습니다.", icon="❌")
                             st.rerun()
 
