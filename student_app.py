@@ -14,11 +14,7 @@ st.set_page_config(
 # ==========================================
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
-MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite: 19]
-
-# 세션 상태 초기화 (카드 클릭 시 선택된 물품 기억용)
-if "selected_item" not in st.session_state:
-    st.session_state["selected_item"] = None
+MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수 #26.12.20까지[cite: 20]
 
 # ==========================================
 # [모바일/데스크탑 반응형 CSS]
@@ -26,47 +22,44 @@ if "selected_item" not in st.session_state:
 st.markdown(
     """
     <style>
-    /* 물품 카드 공통 스타일 */
+    /* 물품 카드 심플 스타일 */
     .item-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
-        border-radius: 8px 8px 0 0;
-        padding: 12px 12px;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
-    .item-title {
-        font-size: 17px;
+    .item-info {
+        font-size: 16px;
         font-weight: 600;
-        margin-bottom: 6px;
         color: #111111;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .item-qty {
-        font-size: 19px;
-        font-weight: bold;
+    .item-badge {
+        font-size: 16px;
+        font-weight: 700;
         color: #1e88e5;
-        margin-bottom: 4px;
-    }
-    .item-sub {
-        font-size: 13px;
-        color: #666666;
+        margin-left: 8px;
     }
 
     /* 모바일 전용 반응형 스타일 (화면 너비 768px 이하) */
     @media screen and (max-width: 768px) {
         .item-card {
-            padding: 8px 10px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
         }
-        .item-title {
+        .item-info {
             font-size: 14px;
         }
-        .item-qty {
-            font-size: 16px;
-        }
-        .item-sub {
-            font-size: 12px;
+        .item-badge {
+            font-size: 14px;
         }
     }
     </style>
@@ -96,17 +89,17 @@ except Exception:
 
 st.markdown("---")
 
-# 💡 원래 쓰시던 깔끔한 순정 Streamlit 탭 스타일로 복구[cite: 19]
+# 순정 Streamlit 탭 스타일[cite: 20]
 tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
 
-# 물품 데이터 로드
+# 물품 데이터 로드[cite: 20]
 items = []
 try:
     items = sm.get_all_items()
 except Exception:
     pass
 
-# 물품명 -> 잔여 수량 매핑 딕셔너리 생성
+# 물품명 -> 잔여 수량 매핑 딕셔너리 생성[cite: 20]
 item_qty_map = {}
 available_items = []
 for it in items:
@@ -136,39 +129,18 @@ with tab_status:
                     avail_raw = clean_item.get("available_qty", 0)
                     avail = int(avail_raw) if str(avail_raw).isdigit() else 0
                     total = clean_item.get("total_qty", "-")
-                    loc = clean_item.get("location", "-")
                     status_icon = "🟢" if avail > 0 else "🔴"
 
+                    # 예시 포맷: 🟢 진공청소기 2/5 (버튼 없이 심플 표시)
                     st.markdown(
                         f"""
                         <div class="item-card">
-                            <div class="item-title">{status_icon} {name}</div>
-                            <div class="item-qty">{avail}개 남음</div>
-                            <div class="item-sub">전체 {total}개 | 📍 {loc}</div>
+                            <span class="item-info">{status_icon} {name}</span>
+                            <span class="item-badge">{avail}/{total}</span>
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
-                    
-                    # 물품 카드 바로 아래 대여 신청 선택 버튼
-                    if avail > 0:
-                        if st.button("신청하기 👉", key=f"btn_card_{name}_{i}_{j}", use_container_width=True):
-                            st.session_state["selected_item"] = name
-                            # 순정 탭 구조에서 '📝 대여 신청하기' 탭으로 즉시 화면 전환되도록 JS 트리거 실행
-                            st.components.v1.html(
-                                """
-                                <script>
-                                    const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
-                                    if (tabs && tabs.length > 1) {
-                                        tabs[1].click();
-                                    }
-                                </script>
-                                """,
-                                height=0
-                            )
-                            st.toast(f"'{name}' 물품이 선택되었습니다. 신청서를 작성해 주세요!", icon="📦")
-                    else:
-                        st.button("품절 (대여불가)", key=f"btn_disabled_{name}_{i}_{j}", disabled=True, use_container_width=True)
 
 # ==========================================
 # [탭 2: 대여 신청]
@@ -179,11 +151,6 @@ with tab_apply:
     if not available_items:
         st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
     else:
-        # 카드에서 클릭한 물품이 있으면 해당 물품을 드롭다운 기본값으로 설정
-        default_idx = 0
-        if st.session_state.get("selected_item") in available_items:
-            default_idx = available_items.index(st.session_state["selected_item"])
-
         with st.form("apply_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -193,11 +160,10 @@ with tab_apply:
                 s_name = st.text_input("이름", placeholder="예: 홍길동")
                 s_email = st.text_input("이메일 (대학교 G메일 권장)", placeholder="예: user@s.scnu.ac.kr")
             with col2:
-                # 드롭다운에 실시간 잔여 수량 표시
+                # 드롭다운에 실시간 잔여 수량 표시[cite: 20]
                 s_item = st.selectbox(
                     "신청 물품 선택", 
                     available_items, 
-                    index=default_idx,
                     format_func=lambda x: f"{x} (대여가능: {item_qty_map.get(x, 0)}개)"
                 )
                 r_date = st.date_input("대여 희망 날짜", min_value=date.today(), value=date.today())
@@ -266,7 +232,6 @@ with tab_apply:
                             )
                         st.success(f"신청이 정상 접수되었습니다! (신청번호: {new_id})")
                         st.info("생활관 자치회 검토 후 승인 결과가 확정됩니다. '내 신청 결과 조회' 탭에서 상태를 확인하세요.")
-                        st.session_state["selected_item"] = None
                     except Exception as err:
                         st.error(f"신청서 저장 중 오류가 발생했습니다: {err}")
 
