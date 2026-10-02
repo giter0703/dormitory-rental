@@ -28,7 +28,7 @@ st.markdown(
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 14px;
+        padding: 12px 12px;
         margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         display: flex;
@@ -36,7 +36,7 @@ st.markdown(
         justify-content: space-between;
     }
     .item-info {
-        font-size: 15px;
+        font-size: 20px;
         font-weight: 600;
         color: #111111;
         white-space: nowrap;
