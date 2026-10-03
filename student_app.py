@@ -18,11 +18,12 @@ TIME_OPTIONS = ["선택하세요", "20:00~20:30", "20:30~21:00"]
 MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수
 
 # ==========================================
-# [모바일 2열 나열 및 반응형 CSS]
+# [모바일/데스크탑 반응형 CSS]
 # ==========================================
 st.markdown(
     """
     <style>
+    /* 물품 카드 스타일 */
     .item-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
@@ -57,6 +58,7 @@ st.markdown(
         white-space: nowrap;
     }
 
+    /* 모바일 반응형: 768px 이하에서 1행 2열 배치 */
     @media screen and (max-width: 768px) {
         div[data-testid="stHorizontalBlock"] {
             display: grid !important;
@@ -112,7 +114,7 @@ st.markdown("---")
 
 tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 대여 신청하기", "🔍 내 신청 결과 조회"])
 
-# 물품 데이터 로드 (에러 발생 시 화면에 출력하도록 수정)
+# 물품 데이터 로드
 raw_items = []
 try:
     raw_items = sm.get_all_items()
@@ -131,7 +133,7 @@ for it in raw_items:
     if not i_name:
         continue
 
-    # 수량 파싱 및 정합성 보정
+    # 수량 파싱 및 정합성 보정 (available_qty <= total_qty)
     raw_total = clean_it.get("total_qty", 0)
     raw_avail = clean_it.get("available_qty", 0)
     
@@ -198,6 +200,7 @@ with tab_apply:
     if not available_items:
         st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
     else:
+        # 실시간 연동 및 탭 보존을 위해 일반 컨테이너와 고유 key 사용
         with st.container():
             col1, col2 = st.columns(2)
             with col1:
@@ -217,13 +220,14 @@ with tab_apply:
                     key="s_item"
                 )
                 
+                # 대여 희망 날짜 변경 시 실시간으로 아래 반납 예정 일자 달력 연동
                 r_date = st.date_input("대여 희망 날짜 *", min_value=date.today(), value=date.today(), key="r_date")
                 r_time = st.selectbox("대여 희망 시간 *", TIME_OPTIONS, index=0, key="r_time")
                 
                 max_return_date = r_date + timedelta(days=MAX_RENTAL_DAYS)
                 exp_ret_date = st.date_input(
                     "반납 예정 일자 *", 
-                    min_value=r_date, 
+                    min_value=r_date,  # 희망일자 이전 날짜는 원천 차단됨
                     max_value=max_return_date, 
                     value=r_date,
                     key="exp_ret_date"
@@ -257,7 +261,9 @@ with tab_apply:
             except Exception:
                 pass
             
+            # 비동의/동의 2지선다
             agreement = st.radio("위 서약 내용에 동의하십니까? *", ["비동의", "동의"], index=0, horizontal=True, key="agreement")
+
             submit_btn = st.button("신청서 제출", use_container_width=True, type="primary")
 
             if submit_btn:
