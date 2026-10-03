@@ -15,7 +15,7 @@ st.set_page_config(
 NOTICE_FONT_SIZE = "16px"
 BUILDING_OPTIONS = ["선택하세요", "웅지관", "창조관", "진리관", "청운관", "향림1관", "향림2관", "향림3관"]
 TIME_OPTIONS = ["선택하세요", "20:00~20:30", "20:30~21:00"]
-MAX_RENTAL_DAYS = 79  # 사생 최대 대여 가능 일수
+MAX_RENTAL_DAYS = 77  # 사생 최대 대여 가능 일수
 
 # ==========================================
 # [모바일 2열 나열 및 반응형 CSS]
@@ -60,21 +60,17 @@ st.markdown(
 
     /* 모바일 반응형: 화면 너비 768px 이하에서 1행 2열 강제 배치 */
     @media screen and (max-width: 768px) {
-        /* Streamlit columns의 모바일 1열 자동 세로 정렬을 2열 그리드로 전환 */
         div[data-testid="stHorizontalBlock"] {
             display: grid !important;
             grid-template-columns: repeat(2, 1fr) !important;
             gap: 8px !important;
             margin-bottom: 0px !important;
         }
-
-        /* 각 컬럼 너비 강제 조정 */
         div[data-testid="stColumn"] {
             width: 100% !important;
             min-width: 0 !important;
             flex: unset !important;
         }
-
         .item-card {
             padding: 10px 8px;
             margin-bottom: 8px;
@@ -168,7 +164,6 @@ with tab_status:
     if not processed_items:
         st.info("현재 등록된 물품이 없습니다.")
     else:
-        # PC에서는 6열, 모바일에서는 CSS에 의해 1행 2열로 자동 변환 배치
         for i in range(0, len(processed_items), 6):
             chunk = processed_items[i:i+6]
             cols = st.columns(6)
@@ -204,14 +199,16 @@ with tab_apply:
     if not available_items:
         st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
     else:
-        with st.form("apply_form", clear_on_submit=True):
+        # [수정] st.form을 제거하고 일반 컨테이너 사용 (실시간 연동 및 탭 이동 시 데이터 보존을 위함)
+        with st.container():
             col1, col2 = st.columns(2)
             with col1:
-                s_building = st.selectbox("생활관명 선택 *", BUILDING_OPTIONS, index=0)
-                s_room = st.text_input("호실 번호 *", placeholder="예: 402호")
-                s_id = st.text_input("학번 *", placeholder="예: 20241001", max_chars=10)
-                s_name = st.text_input("이름 *", placeholder="예: 홍길동")
-                s_email = st.text_input("이메일 (학교 웹메일 또는 G메일) *", placeholder="예: user@s.scnu.ac.kr")
+                # 모든 필드에 key 속성을 부여하여 데이터가 절대 삭제되지 않도록 보존
+                s_building = st.selectbox("생활관명 선택 *", BUILDING_OPTIONS, index=0, key="s_building")
+                s_room = st.text_input("호실 번호 *", placeholder="예: 402호", key="s_room")
+                s_id = st.text_input("학번 *", placeholder="예: 20241001", max_chars=10, key="s_id")
+                s_name = st.text_input("이름 *", placeholder="예: 홍길동", key="s_name")
+                s_email = st.text_input("이메일 (학교 웹메일 또는 G메일) *", placeholder="예: user@s.scnu.ac.kr", key="s_email")
             
             with col2:
                 item_dropdown_options = ["선택하세요"] + available_items
@@ -219,17 +216,21 @@ with tab_apply:
                     "신청 물품 선택 *", 
                     item_dropdown_options,
                     index=0,
-                    format_func=lambda x: f"{x} (이용가능: {item_qty_map[x]['avail']}/{item_qty_map[x]['total']})" if x in item_qty_map else x
+                    format_func=lambda x: f"{x} (이용가능: {item_qty_map[x]['avail']}/{item_qty_map[x]['total']})" if x in item_qty_map else x,
+                    key="s_item"
                 )
-                r_date = st.date_input("대여 희망 날짜 *", min_value=date.today(), value=date.today())
-                r_time = st.selectbox("대여 희망 시간 *", TIME_OPTIONS, index=0)
+                
+                # [수정 1] 대여 희망 날짜 변경 시 실시간으로 아래 반납 예정 일자의 min_value가 자동 갱신됨
+                r_date = st.date_input("대여 희망 날짜 *", min_value=date.today(), value=date.today(), key="r_date")
+                r_time = st.selectbox("대여 희망 시간 *", TIME_OPTIONS, index=0, key="r_time")
                 
                 max_return_date = r_date + timedelta(days=MAX_RENTAL_DAYS)
                 exp_ret_date = st.date_input(
                     "반납 예정 일자 *", 
-                    min_value=r_date, 
+                    min_value=r_date,  # 희망일자보다 이전 날짜 선택 원천 차단
                     max_value=max_return_date, 
-                    value=r_date
+                    value=r_date,
+                    key="exp_ret_date"
                 )
 
             st.markdown("---")
@@ -260,9 +261,11 @@ with tab_apply:
             except Exception:
                 pass
             
-            agreement = st.radio("위 서약 내용에 동의하십니까? *", ["선택안함", "동의", "비동의"], index=0, horizontal=True)
+            # [수정 2] 선택지를 비동의, 동의 2개로 제한 (기본값: 비동의)
+            agreement = st.radio("위 서약 내용에 동의하십니까? *", ["비동의", "동의"], index=0, horizontal=True, key="agreement")
 
-            submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
+            # st.form_submit_button 대신 일반 버튼 사용
+            submit_btn = st.button("신청서 제출", use_container_width=True, type="primary")
 
             if submit_btn:
                 missing_fields = []
@@ -280,11 +283,10 @@ with tab_apply:
                     missing_fields.append("신청 물품")
                 if r_time == "선택하세요":
                     missing_fields.append("대여 희망 시간")
-                if agreement == "선택안함":
-                    missing_fields.append("서약서 동의 여부")
 
                 if missing_fields:
                     st.error(f"⚠️ 다음 필수 항목을 모두 입력하거나 선택해 주세요: {', '.join(missing_fields)}")
+                # [수정 2] 동의가 아닐 경우 에러 출력 (입력 데이터는 안전하게 보존됨)
                 elif agreement != "동의":
                     st.error("⚠️ 서약 내용에 '동의'하셔야 대여 신청이 완료됩니다.")
                 elif "@" not in s_email or "." not in s_email:
@@ -306,7 +308,7 @@ with tab_apply:
                                 email=s_email.strip()
                             )
                             
-                        # 📩 1) 사생 접수 확인 이메일 발송
+                        # 1) 사생 접수 확인 이메일 발송
                         student_subj = f"[생활관 자치회] {s_item} 물품 대여 신청이 정상 접수되었습니다."
                         student_body = f"""
                         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -324,7 +326,7 @@ with tab_apply:
                         """
                         sm.send_email_notification(s_email.strip(), student_subj, student_body)
 
-                        # 📩 2) 관리자 신규 접수 알림 이메일 발송
+                        # 2) 관리자 신규 접수 알림 이메일 발송
                         if "smtp" in st.secrets and "admin_email" in st.secrets["smtp"]:
                             admin_recv = st.secrets["smtp"]["admin_email"]
                             admin_subj = f"[신규 대여신청] {s_building} {s_name}님 ({s_item})"
