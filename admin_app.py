@@ -28,7 +28,7 @@ def get_env_val(key, default=""):
     except Exception:
         # secrets.toml 부재로 인한 StreamlitSecretNotFoundError 발생 시 .env 조회
         val = os.getenv(key, default)
-        
+
     # 따옴표 기호가 포함되어 있을 경우 안전하게 제거
     if isinstance(val, str):
         val = val.strip().strip("\"'")
@@ -104,12 +104,14 @@ except Exception:
 with tab1:
     st.subheader("신규 대여 신청 검토")
     pending = [r for r in all_rentals if r.get("status") == "승인대기"]
-    
+
     if not pending:
         st.info("현재 대기 중인 신청 건이 없습니다.")
     else:
         for idx, r in enumerate(pending):
             rental_id = r.get("rental_id", "")
+            row_number = r.get("row_number", idx + 2)
+            rental_key = f"{rental_id}_{row_number}"
             item_name = r.get("item_name", "물품")
             student_name = r.get("student_name", "미상")
             student_id = r.get("student_id", "-")
@@ -119,7 +121,7 @@ with tab1:
             email = r.get("email", "미입력")
             agreement = r.get("agreement", "-")
             expected_return = r.get("expected_return", "-")
-            
+
             location_info = f"{building_name} {room_no}호" if building_name else f"{room_no}호"
             desired_date = r.get("desired_date", "").strip()
             display_desired = desired_date if desired_date else "-"
@@ -134,33 +136,37 @@ with tab1:
                     st.write(f"- 관생 희망일시: `{display_desired}`")
                     st.write(f"- 반납 예정일자: `{expected_return}`")
                     st.write(f"- 서약 동의: **{agreement}**")
-                
+
                 with col_action:
                     edit_desired = st.text_input(
                         "대여 희망일시 (관리자 수정 가능)",
                         value=display_desired,
-                        key=f"edit_desired_{rental_id}"
+                        key=f"edit_desired_{rental_key}"
                     )
                     c_date = st.text_input(
-                        "확정 대여일시 안내 문구", 
-                        value=f"{edit_desired} 생활관 자치회실 방문 수령", 
-                        key=f"c_{rental_id}"
+                        "확정 대여일시 안내 문구",
+                        value=f"{edit_desired} 생활관 자치회실 방문 수령",
+                        key=f"c_{rental_key}"
                     )
                     c_memo = st.text_input(
-                        "관생 안내 메모 / 반려 사유", 
-                        placeholder="예: 시간 준수 요망", 
-                        key=f"m_{rental_id}"
+                        "관생 안내 메모 / 반려 사유",
+                        placeholder="예: 시간 준수 요망",
+                        key=f"m_{rental_key}"
                     )
-                    
+
                     btn_col1, btn_col2, _ = st.columns([1, 1, 1.5])
                     with btn_col1:
-                        if st.button("🟢 승인", key=f"app_{rental_id}", use_container_width=True):
+                        if st.button("🟢 승인", key=f"app_{rental_key}", use_container_width=True):
                             with st.spinner("승인 처리 중..."):
                                 success = sm.approve_rental(
-                                    rental_id=rental_id, item_name=item_name,
-                                    confirmed_date=c_date, admin_memo=c_memo,
-                                    updated_desired_date=edit_desired
+                                    rental_id=rental_id,
+                                    item_name=item_name,
+                                    confirmed_date=c_date,
+                                    admin_memo=c_memo,
+                                    updated_desired_date=edit_desired,
+                                    row_number=row_number
                                 )
+
                                 # 📩 사생에게 승인 안내 메일 발송
                                 if success and email and email != "미입력":
                                     appr_subj = f"[생활관 자치회] {item_name} 대여 신청이 승인되었습니다."
@@ -176,17 +182,21 @@ with tab1:
                                     </div>
                                     """
                                     sm.send_email_notification(email.strip(), appr_subj, appr_body)
-                                    
+
                             if success:
                                 st.toast(f"{student_name}님의 신청이 승인되었습니다.", icon="✅")
                                 st.rerun()
 
                     with btn_col2:
-                        if st.button("🔴 반려", key=f"rej_{rental_id}", use_container_width=True):
+                        if st.button("🔴 반려", key=f"rej_{rental_key}", use_container_width=True):
                             reason_msg = c_memo if c_memo else "자치회 사정 또는 재고 부족으로 반려되었습니다."
                             with st.spinner("반려 처리 중..."):
-                                sm.reject_rental(rental_id=rental_id, reject_reason=reason_msg)
-                                
+                                sm.reject_rental(
+                                    rental_id=rental_id,
+                                    reject_reason=reason_msg,
+                                    row_number=row_number
+                                )
+
                                 # 📩 사생에게 반려 안내 메일 발송
                                 if email and email != "미입력":
                                     rej_subj = f"[생활관 자치회] {item_name} 대여 신청이 반려되었습니다."
@@ -201,7 +211,7 @@ with tab1:
                                     </div>
                                     """
                                     sm.send_email_notification(email.strip(), rej_subj, rej_body)
-                                    
+
                             st.toast("신청이 반려되었습니다.", icon="❌")
                             st.rerun()
 
@@ -212,8 +222,10 @@ with tab2:
     if not approved:
         st.caption("수령 대기 건이 없습니다.")
     else:
-        for r in approved:
+        for idx, r in enumerate(approved):
             rental_id = r.get("rental_id", "")
+            row_number = r.get("row_number", idx + 2)
+            rental_key = f"{rental_id}_{row_number}"
             item_name = r.get("item_name", "물품")
             student_name = r.get("student_name", "미상")
             confirmed_date = r.get("confirmed_date", "-")
@@ -222,8 +234,8 @@ with tab2:
                 c1, c2, c3 = st.columns([2, 2, 1])
                 c1.write(f"**{item_name}** | {student_name}")
                 c2.write(f"수령 약속: {confirmed_date}")
-                if c3.button("물품 인출 완료", key=f"take_{rental_id}", use_container_width=True):
-                    sm.start_rental(rental_id)
+                if c3.button("물품 인출 완료", key=f"take_{rental_key}", use_container_width=True):
+                    sm.start_rental(rental_id, row_number=row_number)
                     st.rerun()
 
     st.markdown("---")
@@ -232,8 +244,10 @@ with tab2:
     if not renting:
         st.caption("현재 대여 중인 물품이 없습니다.")
     else:
-        for r in renting:
+        for idx, r in enumerate(renting):
             rental_id = r.get("rental_id", "")
+            row_number = r.get("row_number", idx + 2)
+            rental_key = f"{rental_id}_{row_number}"
             item_name = r.get("item_name", "물품")
             student_name = r.get("student_name", "미상")
             expected_return = r.get("expected_return", "-")
@@ -243,8 +257,8 @@ with tab2:
                 c1, c2, c3 = st.columns([2, 2, 1])
                 c1.write(f"**{item_name}** | {student_name}")
                 c2.write(f"대여일: {confirmed_date} / 반납 예정일: {expected_return}")
-                if c3.button("반납 완료", key=f"ret_{rental_id}", use_container_width=True):
-                    sm.complete_return(rental_id, item_name)
+                if c3.button("반납 완료", key=f"ret_{rental_key}", use_container_width=True):
+                    sm.complete_return(rental_id, item_name, row_number=row_number)
                     st.rerun()
 
 # [탭 3: 전체 내역]

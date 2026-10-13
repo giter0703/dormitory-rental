@@ -3,6 +3,7 @@ import gspread
 import json
 import os
 from datetime import datetime
+import uuid
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -30,7 +31,7 @@ def get_sh():
     if os.path.exists(JSON_KEY_FILE):
         gc = gspread.service_account(filename=JSON_KEY_FILE)
         return gc.open_by_key(SPREADSHEET_KEY)
-        
+
     raise FileNotFoundError("인증 정보를 찾을 수 없습니다.")
 
 def get_db_client():
@@ -89,13 +90,14 @@ def get_all_rentals():
     rows = rentals_sheet.get_all_values()
     if not rows or len(rows) <= 1:
         return []
-    
+
     records = []
-    for r in rows[1:]:
+    for row_number, r in enumerate(rows[1:], start=2):
         while len(r) < 15:
             r.append("")
-            
+
         record = {
+            "row_number": row_number,
             "rental_id": r[0].strip(),
             "student_id": r[1].strip(),
             "student_name": r[2].strip(),
@@ -114,93 +116,109 @@ def get_all_rentals():
         }
         if record["rental_id"]:
             records.append(record)
-            
+
     return records
 
 def add_rental_request(student_id, student_name, building_name, room_no, item_name, desired_date, expected_return, agreement, email):
     _, rentals_sheet = get_db_client()
-    rental_id = f"R{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    req_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+    now = datetime.now()
+
+    # 초 단위 ID는 같은 초에 신청이 겹치면 중복될 수 있으므로 임의 식별자를 추가
+    rental_id = f"R{now.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+    req_time = now.strftime("%Y-%m-%d %H:%M:%S")
+
     new_row = [
-        str(rental_id),          
-        str(student_id),         
-        str(student_name),       
-        str(room_no),            
-        str(item_name),          
-        str(req_time),           
-        str(desired_date),       
-        "",                      
-        "승인대기",                
-        "",                      
-        "",                      
-        str(building_name),      
-        str(expected_return),    
-        str(agreement),          
-        str(email)               
+        str(rental_id),
+        str(student_id),
+        str(student_name),
+        str(room_no),
+        str(item_name),
+        str(req_time),
+        str(desired_date),
+        "",
+        "승인대기",
+        "",
+        "",
+        str(building_name),
+        str(expected_return),
+        str(agreement),
+        str(email)
     ]
     rentals_sheet.append_row(new_row, value_input_option="USER_ENTERED")
+
     # 새로운 데이터가 추가되었으므로 캐시 초기화
     get_all_rentals.clear()
     return rental_id
 
-def approve_rental(rental_id, item_name, confirmed_date, admin_memo="", updated_desired_date=None):
+def _find_rental_row(rentals_sheet, rental_id, row_number=None):
+    """신청 번호 또는 시트 행 번호로 대여 신청의 실제 행을 찾습니다."""
+    if row_number is not None:
+        row_number = int(row_number)
+        stored_id = str(rentals_sheet.cell(row_number, 1).value or "").strip()
+        if stored_id == str(rental_id).strip():
+            return row_number
+        return None
+
+    records = rentals_sheet.get_all_records()
+    for idx, record in enumerate(records, start=2):
+        clean_record = {str(k).strip(): v for k, v in record.items()}
+        if str(clean_record.get("rental_id", "")).strip() == str(rental_id).strip():
+            return idx
+
+    return None
+
+def approve_rental(rental_id, item_name, confirmed_date, admin_memo="", updated_desired_date=None, row_number=None):
     items_sheet, rentals_sheet = get_db_client()
-    records = rentals_sheet.get_all_records()
-    
-    for idx, r in enumerate(records, start=2):
-        clean_r = {str(k).strip(): v for k, v in r.items()}
-        if str(clean_r.get("rental_id")) == str(rental_id):
-            if updated_desired_date:
-                rentals_sheet.update_cell(idx, 7, str(updated_desired_date))
-            rentals_sheet.update_cell(idx, 8, str(confirmed_date))
-            rentals_sheet.update_cell(idx, 9, "승인완료")
-            rentals_sheet.update_cell(idx, 10, str(admin_memo))
-            update_item_available_qty(item_name, -1)
-            
-            get_all_rentals.clear()
-            return True
-    return False
+    idx = _find_rental_row(rentals_sheet, rental_id, row_number)
+    if idx is None:
+        return False
 
-def reject_rental(rental_id, reject_reason):
-    _, rentals_sheet = get_db_client()
-    records = rentals_sheet.get_all_records()
-    for idx, r in enumerate(records, start=2):
-        clean_r = {str(k).strip(): v for k, v in r.items()}
-        if str(clean_r.get("rental_id")) == str(rental_id):
-            rentals_sheet.update_cell(idx, 9, "반려")
-            rentals_sheet.update_cell(idx, 10, str(reject_reason))
-            
-            get_all_rentals.clear()
-            return True
-    return False
+    if updated_desired_date:
+        rentals_sheet.update_cell(idx, 7, str(updated_desired_date))
+    rentals_sheet.update_cell(idx, 8, str(confirmed_date))
+    rentals_sheet.update_cell(idx, 9, "승인완료")
+    rentals_sheet.update_cell(idx, 10, str(admin_memo))
+    update_item_available_qty(item_name, -1)
 
-def start_rental(rental_id):
-    _, rentals_sheet = get_db_client()
-    records = rentals_sheet.get_all_records()
-    for idx, r in enumerate(records, start=2):
-        clean_r = {str(k).strip(): v for k, v in r.items()}
-        if str(clean_r.get("rental_id")) == str(rental_id):
-            rentals_sheet.update_cell(idx, 9, "대여중")
-            
-            get_all_rentals.clear()
-            return True
-    return False
+    get_all_rentals.clear()
+    return True
 
-def complete_return(rental_id, item_name):
+def reject_rental(rental_id, reject_reason, row_number=None):
     _, rentals_sheet = get_db_client()
-    records = rentals_sheet.get_all_records()
+    idx = _find_rental_row(rentals_sheet, rental_id, row_number)
+    if idx is None:
+        return False
+
+    rentals_sheet.update_cell(idx, 9, "반려")
+    rentals_sheet.update_cell(idx, 10, str(reject_reason))
+
+    get_all_rentals.clear()
+    return True
+
+def start_rental(rental_id, row_number=None):
+    _, rentals_sheet = get_db_client()
+    idx = _find_rental_row(rentals_sheet, rental_id, row_number)
+    if idx is None:
+        return False
+
+    rentals_sheet.update_cell(idx, 9, "대여중")
+
+    get_all_rentals.clear()
+    return True
+
+def complete_return(rental_id, item_name, row_number=None):
+    _, rentals_sheet = get_db_client()
+    idx = _find_rental_row(rentals_sheet, rental_id, row_number)
+    if idx is None:
+        return False
+
     return_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for idx, r in enumerate(records, start=2):
-        clean_r = {str(k).strip(): v for k, v in r.items()}
-        if str(clean_r.get("rental_id")) == str(rental_id):
-            rentals_sheet.update_cell(idx, 9, "반납완료")
-            rentals_sheet.update_cell(idx, 11, return_time)
-            update_item_available_qty(item_name, +1)
-            
-            get_all_rentals.clear()
-            return True
-    return False
+    rentals_sheet.update_cell(idx, 9, "반납완료")
+    rentals_sheet.update_cell(idx, 11, return_time)
+    update_item_available_qty(item_name, +1)
+
+    get_all_rentals.clear()
+    return True
 
 def get_rentals_by_student(student_id):
     all_rentals = get_all_rentals()
@@ -211,26 +229,26 @@ def send_email_notification(to_email, subject, body_html):
     try:
         if "smtp" not in st.secrets:
             return False
-            
+
         smtp_conf = st.secrets["smtp"]
         sender_email = smtp_conf.get("sender_email")
         app_password = smtp_conf.get("app_password")
         server = smtp_conf.get("server", "smtp.gmail.com")
         port = int(smtp_conf.get("port", 465))
-        
+
         if not sender_email or not app_password or not to_email:
             return False
-            
+
         msg = MIMEMultipart()
         msg["From"] = f"생활관 자치회 <{sender_email}>"
         msg["To"] = to_email
         msg["Subject"] = subject
         msg.attach(MIMEText(body_html, "html", "utf-8"))
-        
+
         with smtplib.SMTP_SSL(server, port, timeout=10) as smtp:
             smtp.login(sender_email, app_password)
             smtp.send_message(msg)
-            
+
         return True
     except Exception as e:
         print(f"이메일 발송 중 오류: {e}")
