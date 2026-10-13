@@ -28,7 +28,7 @@ st.markdown(
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 12px;
+        padding: 12px 14px;
         margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         display: flex;
@@ -36,7 +36,7 @@ st.markdown(
         justify-content: space-between;
     }
     .item-info {
-        font-size: 20px;
+        font-size: 16px;
         font-weight: 600;
         color: #111111;
         white-space: nowrap;
@@ -44,28 +44,45 @@ st.markdown(
         text-overflow: ellipsis;
     }
     .item-badge {
-        font-size: 20px;
+        font-size: 16px;
         font-weight: 700;
         color: #1e88e5;
-        margin-left: 8px;
+        margin-left: 6px;
+        white-space: nowrap;
     }
     .item-badge-empty {
-        font-size: 19px;
+        font-size: 14px;
         font-weight: 700;
         color: #d32f2f;
-        margin-left: 8px;
+        margin-left: 6px;
+        white-space: nowrap;
     }
 
+    /* 모바일 반응형: 768px 이하에서 1행 2열 배치 */
     @media screen and (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+            margin-bottom: 0px !important;
+        }
+        div[data-testid="stColumn"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex: unset !important;
+        }
         .item-card {
-            padding: 10px 10px;
+            padding: 10px 8px;
             margin-bottom: 8px;
         }
         .item-info {
-            font-size: 18px;
+            font-size: 14px;
         }
-        .item-badge, .item-badge-empty {
-            font-size: 18px;
+        .item-badge {
+            font-size: 14px;
+        }
+        .item-badge-empty {
+            font-size: 12px;
         }
     }
     </style>
@@ -90,8 +107,8 @@ try:
             """,
             unsafe_allow_html=True
         )
-except Exception:
-    pass
+except Exception as e:
+    st.error(f"🚨 공지사항 로드 중 오류 발생: {e}")
 
 st.markdown("---")
 
@@ -101,10 +118,11 @@ tab_status, tab_apply, tab_query = st.tabs(["📦 대여 가능 물품", "📝 �
 raw_items = []
 try:
     raw_items = sm.get_all_items()
-except Exception:
+except Exception as e:
+    st.error(f"🚨 구글 시트 물품 데이터를 불러오는 중 오류가 발생했습니다: {e}")
     raw_items = []
 
-# [요구사항 2] total_qty와 available_qty 정제 및 대여 가능 물품 선별
+# total_qty와 available_qty 정제 및 대여 가능 물품 선별
 processed_items = []
 item_qty_map = {}
 available_items = []
@@ -122,7 +140,6 @@ for it in raw_items:
     total_qty = int(raw_total) if str(raw_total).isdigit() else 0
     avail_qty = int(raw_avail) if str(raw_avail).isdigit() else 0
     
-    # 이용가능 수량이 전체 수량을 초과하지 않도록 보정
     if avail_qty > total_qty:
         avail_qty = total_qty
     if avail_qty < 0:
@@ -136,7 +153,6 @@ for it in raw_items:
     processed_items.append(item_record)
     item_qty_map[i_name] = {"avail": avail_qty, "total": total_qty}
 
-    # available_qty가 0보다 큰 경우에만 대여 가능 목록에 포함 (0이면 대여 불가)
     if avail_qty > 0:
         available_items.append(i_name)
 
@@ -150,20 +166,20 @@ with tab_status:
         st.info("현재 등록된 물품이 없습니다.")
     else:
         for i in range(0, len(processed_items), 6):
+            chunk = processed_items[i:i+6]
             cols = st.columns(6)
-            for j, item in enumerate(processed_items[i:i+6]):
+            for j, item in enumerate(chunk):
                 with cols[j]:
                     name = item["item_name"]
                     avail = item["available_qty"]
                     total = item["total_qty"]
                     
-                    # [요구사항 2 & 3] 0개면 대여불가 표시, "이용가능한 수량/전체 수량" 형식 적용
                     if avail > 0:
                         status_icon = "🟢"
                         badge_html = f'<span class="item-badge">{avail}/{total}</span>'
                     else:
                         status_icon = "🔴"
-                        badge_html = f'<span class="item-badge-empty">대여불가 (0/{total})</span>'
+                        badge_html = f'<span class="item-badge-empty">0/{total}</span>'
 
                     st.markdown(
                         f"""
@@ -184,34 +200,37 @@ with tab_apply:
     if not available_items:
         st.warning("⚠️ 현재 대여 가능한 물품 재고가 없습니다. '대여 가능 물품' 탭에서 잔여 수량을 확인해 주세요.")
     else:
-        with st.form("apply_form", clear_on_submit=True):
+        # 실시간 연동 및 탭 보존을 위해 일반 컨테이너와 고유 key 사용
+        with st.container():
             col1, col2 = st.columns(2)
             with col1:
-                # [요구사항 1] 생활관명 기본 선택 방지
-                s_building = st.selectbox("생활관명 선택 *", BUILDING_OPTIONS, index=0)
-                s_room = st.text_input("호실 번호 *", placeholder="예: 402호")
-                s_id = st.text_input("학번 *", placeholder="예: 20241001", max_chars=10)
-                s_name = st.text_input("이름 *", placeholder="예: 홍길동")
-                s_email = st.text_input("이메일 (학교 웹메일 또는 G메일) *", placeholder="예: user@s.scnu.ac.kr")
+                s_building = st.selectbox("생활관명 선택 *", BUILDING_OPTIONS, index=0, key="s_building")
+                s_room = st.text_input("호실 번호 *", placeholder="예: 402호", key="s_room")
+                s_id = st.text_input("학번 *", placeholder="예: 20241001", max_chars=10, key="s_id")
+                s_name = st.text_input("이름 *", placeholder="예: 홍길동", key="s_name")
+                s_email = st.text_input("이메일 (학교 웹메일 또는 G메일) *", placeholder="예: user@s.scnu.ac.kr", key="s_email")
             
             with col2:
-                # [요구사항 1 & 2] 물품 선택 드롭다운 (대여 가능 수량 표기)
                 item_dropdown_options = ["선택하세요"] + available_items
                 s_item = st.selectbox(
                     "신청 물품 선택 *", 
                     item_dropdown_options,
                     index=0,
-                    format_func=lambda x: f"{x} (이용가능: {item_qty_map[x]['avail']}/{item_qty_map[x]['total']})" if x in item_qty_map else x
+                    format_func=lambda x: f"{x} (이용가능: {item_qty_map[x]['avail']}/{item_qty_map[x]['total']})" if x in item_qty_map else x,
+                    key="s_item"
                 )
-                r_date = st.date_input("대여 희망 날짜 *", min_value=date.today(), value=date.today())
-                r_time = st.selectbox("대여 희망 시간 *", TIME_OPTIONS, index=0)
+                
+                # 대여 희망 날짜 변경 시 실시간으로 아래 반납 예정 일자 달력 연동
+                r_date = st.date_input("대여 희망 날짜 *", min_value=date.today(), value=date.today(), key="r_date")
+                r_time = st.selectbox("대여 희망 시간 *", TIME_OPTIONS, index=0, key="r_time")
                 
                 max_return_date = r_date + timedelta(days=MAX_RENTAL_DAYS)
                 exp_ret_date = st.date_input(
                     "반납 예정 일자 *", 
-                    min_value=r_date, 
+                    min_value=r_date,  # 희망일자 이전 날짜는 원천 차단됨
                     max_value=max_return_date, 
-                    value=r_date
+                    value=r_date,
+                    key="exp_ret_date"
                 )
 
             st.markdown("---")
@@ -242,12 +261,11 @@ with tab_apply:
             except Exception:
                 pass
             
-            # [요구사항 1] 기본 선택 없이 사생이 직접 '동의'를 클릭하도록 유도
-            agreement = st.radio("위 서약 내용에 동의하십니까? *", ["선택안함", "동의", "비동의"], index=0, horizontal=True)
+            # 비동의/동의 2지선다
+            agreement = st.radio("위 서약 내용에 동의하십니까? *", ["비동의", "동의"], index=0, horizontal=True, key="agreement")
 
-            submit_btn = st.form_submit_button("신청서 제출", use_container_width=True)
+            submit_btn = st.button("신청서 제출", use_container_width=True, type="primary")
 
-            # [요구사항 1] 모든 항목 직접 입력 및 선택 여부 검증
             if submit_btn:
                 missing_fields = []
                 if s_building == "선택하세요":
@@ -264,8 +282,6 @@ with tab_apply:
                     missing_fields.append("신청 물품")
                 if r_time == "선택하세요":
                     missing_fields.append("대여 희망 시간")
-                if agreement == "선택안함":
-                    missing_fields.append("서약서 동의 여부")
 
                 if missing_fields:
                     st.error(f"⚠️ 다음 필수 항목을 모두 입력하거나 선택해 주세요: {', '.join(missing_fields)}")
@@ -290,7 +306,7 @@ with tab_apply:
                                 email=s_email.strip()
                             )
                             
-                        # 📩 1) 사생 접수 확인 이메일 발송
+                        # 1) 사생 접수 확인 이메일 발송
                         student_subj = f"[생활관 자치회] {s_item} 물품 대여 신청이 정상 접수되었습니다."
                         student_body = f"""
                         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -308,7 +324,7 @@ with tab_apply:
                         """
                         sm.send_email_notification(s_email.strip(), student_subj, student_body)
 
-                        # 📩 2) 관리자 신규 접수 알림 이메일 발송
+                        # 2) 관리자 신규 접수 알림 이메일 발송
                         if "smtp" in st.secrets and "admin_email" in st.secrets["smtp"]:
                             admin_recv = st.secrets["smtp"]["admin_email"]
                             admin_subj = f"[신규 대여신청] {s_building} {s_name}님 ({s_item})"
